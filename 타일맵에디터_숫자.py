@@ -34,9 +34,15 @@ def save_tilemap(tile_map):
     file_path = simpledialog.askstring("Save Tilemap", "Enter file name:")
     if file_path:
         with open(file_path + ".txt", "w") as file:
+            file.write("[\n")
             for row in tile_map:
-                file.write("".join(map(str, row)) + "\n")
+                file.write("    " + str(row) + ",\n")
+            file.write("]\n")
     root.destroy()
+
+# 드래그 상태 변수
+dragging = False
+current_tile = 0
 
 # 메인 루프
 running = True
@@ -45,9 +51,17 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.MOUSEBUTTONDOWN:
+            dragging = True
             x, y = event.pos
             grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
-            tile_map[grid_y][grid_x] = 1 if tile_map[grid_y][grid_x] == 0 else 0
+            current_tile = 1 if tile_map[grid_y][grid_x] == 0 else 0
+            tile_map[grid_y][grid_x] = current_tile
+        elif event.type == pygame.MOUSEBUTTONUP:
+            dragging = False
+        elif event.type == pygame.MOUSEMOTION and dragging:
+            x, y = event.pos
+            grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
+            tile_map[grid_y][grid_x] = current_tile
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_s:
                 save_tilemap(tile_map)

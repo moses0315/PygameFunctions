@@ -22,6 +22,9 @@ GREY = (128, 128, 128)
 clock = pygame.time.Clock()
 FPS = 60
 
+# 적과 플레이어 사이의 최소 거리 설정
+MIN_DISTANCE_TO_PLAYER = TILE_SIZE
+
 class TileMap:
     def __init__(self, tile_size, tile_map):
         self.tile_size = tile_size
@@ -112,30 +115,36 @@ class Enemy:
     def move(self, player):
         start = (int(self.rect.x // TILE_SIZE), int(self.rect.y // TILE_SIZE))
         goal = (int(player.rect.x // TILE_SIZE), int(player.rect.y // TILE_SIZE))
-        if not self.path or start != self.path[-1]:  # 경로가 없거나 목표 위치가 변경된 경우
-            self.path = self.astar(start, goal)
 
-        if self.path:
-            next_tile = self.path[0]
-            target_x = next_tile[0] * TILE_SIZE
-            target_y = next_tile[1] * TILE_SIZE
+        # 적이 플레이어와의 최소 거리를 유지하도록 체크
+        if self.get_distance_to_player(player) > MIN_DISTANCE_TO_PLAYER:
+            if not self.path or start != self.path[-1]:  # 경로가 없거나 목표 위치가 변경된 경우
+                self.path = self.astar(start, goal)
 
-            # 수평 이동
-            if self.rect.x < target_x:
-                self.rect.x += self.speed
-            elif self.rect.x > target_x:
-                self.rect.x -= self.speed
+            if self.path:
+                next_tile = self.path[0]
+                target_x = next_tile[0] * TILE_SIZE
+                target_y = next_tile[1] * TILE_SIZE
 
-            # 수직 이동
-            if self.rect.y < target_y:
-                self.rect.y += self.speed
-            elif self.rect.y > target_y:
-                self.rect.y -= self.speed
+                # 수평 이동
+                if self.rect.x < target_x:
+                    self.rect.x += self.speed
+                elif self.rect.x > target_x:
+                    self.rect.x -= self.speed
 
-            # 경로를 따라 이동 중에 목표 타일에 도달한 경우 경로 업데이트
-            if abs(self.rect.x - target_x) < self.speed and abs(self.rect.y - target_y) < self.speed:
-                self.rect.x, self.rect.y = target_x, target_y
-                self.path.pop(0)  # 경로의 첫 번째 타일 제거
+                # 수직 이동
+                if self.rect.y < target_y:
+                    self.rect.y += self.speed
+                elif self.rect.y > target_y:
+                    self.rect.y -= self.speed
+
+                # 경로를 따라 이동 중에 목표 타일에 도달한 경우 경로 업데이트
+                if abs(self.rect.x - target_x) < self.speed and abs(self.rect.y - target_y) < self.speed:
+                    self.rect.x, self.rect.y = target_x, target_y
+                    self.path.pop(0)  # 경로의 첫 번째 타일 제거
+
+    def get_distance_to_player(self, player):
+        return ((self.rect.centerx - player.rect.centerx) ** 2 + (self.rect.centery - player.rect.centery) ** 2) ** 0.5
 
     def astar(self, start, goal):
         open_list = []
