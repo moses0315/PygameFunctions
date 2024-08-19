@@ -1,0 +1,60 @@
+import pygame
+import tkinter as tk
+from tkinter import simpledialog
+
+# 초기화
+pygame.init()
+screen = pygame.display.set_mode((640, 480))
+clock = pygame.time.Clock()
+
+# 타일맵 크기 및 타일 크기
+TILE_SIZE = 32
+MAP_WIDTH, MAP_HEIGHT = 20, 15
+
+# 타일맵 초기화
+tile_map = [[0 for _ in range(MAP_WIDTH)] for _ in range(MAP_HEIGHT)]
+
+# 타일 이미지 로드
+wall_image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+wall_image.fill((255, 0, 0))  # 빨간색 벽 타일
+floor_image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+floor_image.fill((0, 255, 0))  # 초록색 바닥 타일
+
+def draw_tilemap(screen, tile_map):
+    for y, row in enumerate(tile_map):
+        for x, tile in enumerate(row):
+            if tile == 1:
+                screen.blit(wall_image, (x * TILE_SIZE, y * TILE_SIZE))
+            elif tile == 0:
+                screen.blit(floor_image, (x * TILE_SIZE, y * TILE_SIZE))
+
+def save_tilemap(tile_map):
+    root = tk.Tk()
+    root.withdraw()
+    file_path = simpledialog.askstring("Save Tilemap", "Enter file name:")
+    if file_path:
+        with open(file_path + ".txt", "w") as file:
+            for row in tile_map:
+                file.write("".join(map(str, row)) + "\n")
+    root.destroy()
+
+# 메인 루프
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            x, y = event.pos
+            grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
+            tile_map[grid_y][grid_x] = 1 if tile_map[grid_y][grid_x] == 0 else 0
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_s:
+                save_tilemap(tile_map)
+
+    screen.fill((0, 0, 0))
+    draw_tilemap(screen, tile_map)
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
