@@ -36,7 +36,7 @@ def save_tilemap(tile_map):
         with open(file_path + ".txt", "w") as file:
             file.write("[\n")
             for row in tile_map:
-                file.write("    " + str(row) + ",\n")
+                file.write(f'    "{''.join(row)}",\n')
             file.write("]\n")
     root.destroy()
 

@@ -1,0 +1,41 @@
+이제 애니메이션을 적용해 봅시다. 첫번째 이미지는 idle 애니메이션 시트고, 두번째는 run, 세번쨰는 jump, 네번째는 fall입니다.
+아무것도 안할 때는 idle 애니메이션을, 바닥에서 달리고 있다면 run 애니메이션을 플레이합니다. 
+점프를 할 때 캐릭터가 상승중일때는 jump 애니메이션을 플레이하고, 하강중일때는 fall 애니메이션을 플레이합니다.
+점프 후 하강이 아니더라도 하강중일 때는 항상 fall 애니메이션을 플레이합니다.
+공중이 있을때는 좌우로 이동하더라도 run 애니메이션이 아닌 jump 또는 fall 애니메이션을 캐릭터의 상태에 따라 플래이합니다.
+모든 애니메이션은 한번만 재생되는 것이 아니라, 상태가 지속되는 한 계속 플레이되어야 합니다. 예를 들어 jump 애니메이션이 한 사이클 플레이됐어도 여전히 jump 상태라면 다시 한번 jump를 플레이하는것입니다.
+
+이제 새로운 적을 생성해봅시다. 이 새로운 적은 똑같이 플레이어를 추격합니다. 
+하지만 중력의 받지 않으며 날아다니는 기존 적과는 다르게 이번 적은 플레이어와 같은 방식으로 이동합니다. 즉, 중력의 영향을 받으며 점프를 하는 적입니다.
+이번 적은 중력의 영향과 점프 때문에 길찾기가 더 까다로울 것 같습니다.
+
+
+class Animation:
+    def __init__(self, image, num_frames, frame_duration=0.1):
+        self.sprite_sheet = image
+        self.num_frames = num_frames
+        self.frame_width = self.sprite_sheet.get_width() // self.num_frames
+        self.frame_height = self.sprite_sheet.get_height()
+        self.frames = []
+        self.current_frame = 0
+        self.frame_duration = frame_duration  # 각 프레임의 지속 시간 (초)
+        self.frame_timer = 0
+        self.load_frames()
+
+    def load_frames(self):
+        for i in range(self.num_frames):
+            frame = self.sprite_sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
+            self.frames.append(frame)
+
+    def update(self, delta_time):
+        self.frame_timer += delta_time
+        if self.frame_timer >= self.frame_duration:
+            self.frame_timer -= self.frame_duration
+            self.current_frame = (self.current_frame + 1) % self.num_frames
+
+    def reset(self):
+        self.current_frame = 0
+        self.frame_timer = 0
+
+    def get_image(self):
+        return self.frames[self.current_frame]
