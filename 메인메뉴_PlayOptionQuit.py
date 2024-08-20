@@ -54,18 +54,25 @@ class TileMap:
         return False
 
 class Animation:
-    def __init__(self, image, num_frames, frame_duration=0.1):
-        self.sprite_sheet = image
-        self.num_frames = num_frames
-        self.frame_width = self.sprite_sheet.get_width() // self.num_frames
-        self.frame_height = self.sprite_sheet.get_height()
-        self.frames = []
+    def __init__(self, frames, num_frames=None, frame_duration=0.1, is_sprite_sheet=False):
+        if is_sprite_sheet:
+            self.sprite_sheet = frames
+            self.num_frames = num_frames
+            self.frame_width = self.sprite_sheet.get_width() // self.num_frames
+            self.frame_height = self.sprite_sheet.get_height()
+            self.frames = []
+            self.load_frames_from_sprite_sheet()
+        else:
+            self.frames = frames
+            self.num_frames = len(frames)
+            self.frame_width = self.frames[0].get_width()
+            self.frame_height = self.frames[0].get_height()
+            
         self.current_frame = 0
         self.frame_duration = frame_duration  # 각 프레임의 지속 시간 (초)
         self.frame_timer = 0
-        self.load_frames()
 
-    def load_frames(self):
+    def load_frames_from_sprite_sheet(self):
         for i in range(self.num_frames):
             frame = self.sprite_sheet.subsurface((i * self.frame_width, 0, self.frame_width, self.frame_height))
             self.frames.append(frame)
@@ -85,10 +92,10 @@ class Animation:
 
 
 
-
     
 class Player:
     def __init__(self, x, y, width, height, speed, tile_map):
+        #self.rect = pygame.Rect(x, y, width, height)
         self.rect = pygame.Rect(x, y, width, height)
         self.speed = speed * 60
         self.gravity = 20 * 60
@@ -99,10 +106,11 @@ class Player:
         self.tile_map = tile_map
 
         # 애니메이션 설정
-        self.idle_animation = Animation(pygame.image.load('_Idle.png'), num_frames=10, frame_duration=0.1)
-        self.run_animation = Animation(pygame.image.load('_Run.png'), num_frames=10, frame_duration=0.1)
-        self.jump_animation = Animation(pygame.image.load('_Jump.png'), num_frames=3, frame_duration=0.1)
-        self.fall_animation = Animation(pygame.image.load('_Fall.png'), num_frames=3, frame_duration=0.1)
+        self.idle_animation = Animation(pygame.image.load('_Idle.png'), num_frames=10, frame_duration=0.1, is_sprite_sheet=True)
+        self.run_animation = Animation(pygame.image.load('_Run.png'), num_frames=10, frame_duration=0.1, is_sprite_sheet=True)
+        self.jump_animation = Animation(pygame.image.load('_Jump.png'), num_frames=3, frame_duration=0.1, is_sprite_sheet=True)
+        self.fall_animation = Animation(pygame.image.load('_Fall.png'), num_frames=3, frame_duration=0.1, is_sprite_sheet=True)
+
         self.current_animation = self.idle_animation
         self.facing_right = True
 
@@ -182,10 +190,13 @@ class Player:
 
     def draw(self, surface):
         image = self.current_animation.get_image()
+        image = pygame.transform.scale(image, (image.get_width()*2, image.get_height()*2))
+
         if not self.facing_right:
             image = pygame.transform.flip(image, True, False)
         image_rect = image.get_rect(midbottom=self.rect.midbottom)
         surface.blit(image, image_rect.topleft)
+        pygame.draw.rect(surface, RED, self.rect, 2)
 
 
 
@@ -203,7 +214,7 @@ class Enemy:
             pygame.image.load('LightBandit_Idle_2.png'),
             pygame.image.load('LightBandit_Idle_3.png')
         ]
-        self.idle_animation = Animation(idle_frames, frame_rate=10)  # 초당 10 프레임
+        self.idle_animation = Animation(idle_frames, frame_duration=0.1)
 
         run_frames = [
             pygame.image.load('LightBandit_Run_0.png'),
@@ -215,7 +226,7 @@ class Enemy:
             pygame.image.load('LightBandit_Run_6.png'),
             pygame.image.load('LightBandit_Run_7.png')
         ]
-        self.run_animation = Animation(run_frames, frame_rate=10)  # 초당 10 프레임
+        self.run_animation = Animation(run_frames, frame_duration=0.1)
 
         self.current_animation = self.idle_animation
         self.facing_left = True
@@ -236,23 +247,35 @@ class Enemy:
                 moving_horizontally = False
                 moving_vertically = False
 
+                # 수평 및 수직 이동 값 초기화
+                dx, dy = 0, 0
+
                 # 수평 이동
                 if self.rect.x < target_x:
-                    self.rect.x += self.speed * delta_time
+                    dx = self.speed * delta_time
                     moving_horizontally = True
                     self.facing_left = False
                 elif self.rect.x > target_x:
-                    self.rect.x -= self.speed * delta_time
+                    dx = -self.speed * delta_time
                     moving_horizontally = True
                     self.facing_left = True
 
                 # 수직 이동
                 if self.rect.y < target_y:
-                    self.rect.y += self.speed * delta_time
+                    dy = self.speed * delta_time
                     moving_vertically = True
                 elif self.rect.y > target_y:
-                    self.rect.y -= self.speed * delta_time
+                    dy = -self.speed * delta_time
                     moving_vertically = True
+
+                # 대각선 이동 조정
+                if moving_horizontally and moving_vertically:
+                    dx *= 0.7071  # 1/√2로 속도 조정
+                    dy *= 0.7071
+
+                # 이동 적용
+                self.rect.x += dx
+                self.rect.y += dy
 
                 # 경로를 따라 이동 중에 목표 타일에 도달한 경우 경로 업데이트
                 if abs(self.rect.x - target_x) < self.speed * delta_time and abs(self.rect.y - target_y) < self.speed * delta_time:
@@ -266,6 +289,7 @@ class Enemy:
                     self.current_animation = self.idle_animation
 
         self.current_animation.update(delta_time)
+
 
     def get_distance_to_player(self, player):
         return ((self.rect.centerx - player.rect.centerx) ** 2 + (self.rect.centery - player.rect.centery) ** 2) ** 0.5
@@ -311,10 +335,15 @@ class Enemy:
 
     def draw(self, surface):
         image = self.current_animation.get_image()
+        image = pygame.transform.scale(image, (image.get_width() * 2, image.get_height() * 2))
+
+        image_rect = image.get_rect(midbottom=self.rect.midbottom)  # 이미지의 중심을 rect의 midbottom에 맞춤
+
         if not self.facing_left:
             image = pygame.transform.flip(image, True, False)
-        surface.blit(image, self.rect.topleft)
 
+        surface.blit(image, image_rect.topleft)
+        pygame.draw.rect(surface, RED, self.rect, 2)
 
 class Button:
     def __init__(self, text, pos, font, bg="black"):
@@ -381,8 +410,8 @@ class Game:
             "#............###",
             "################",
         ])
-        self.player = Player(100, SCREEN_HEIGHT - 60 - 10, 50, 60, 5, self.tile_map)
-        self.enemy = Enemy(200, 200, TILE_SIZE, TILE_SIZE * 2, 2, self.tile_map)  # 날아다니는 적
+        self.player = Player(100, SCREEN_HEIGHT - 60 - 10, 30, 60, 5, self.tile_map) #순서: x, y, width, height, speed, tile_map
+        self.enemy = Enemy(200, 200, 30, 70, 2, self.tile_map)  # 날아다니는 적
         self.current_scene = "menu"  # 초기 화면은 메뉴로 설정
         self.play_button = Button("Play", (350, 300), font=50)
         self.options_button = Button("Options", (350, 400), font=50)
