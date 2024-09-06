@@ -59,9 +59,11 @@ class Node:
 
     def draw(self, win, is_start_or_end=False, is_path=False):
         if is_start_or_end or is_path:
-            pygame.draw.rect(win, self.color, (self.x, self.y, TILE_SIZE, TILE_SIZE * 2))
+            pygame.draw.rect(win, self.color, (self.x, self.y, TILE_SIZE, TILE_SIZE))
+            pygame.draw.rect(win, self.color, (self.x, self.y+TILE_SIZE, TILE_SIZE, TILE_SIZE))
         else:
             pygame.draw.rect(win, self.color, (self.x, self.y, TILE_SIZE, TILE_SIZE))
+            pygame.draw.rect(win, self.color, (self.x, self.y+TILE_SIZE, TILE_SIZE, TILE_SIZE))
 
     def can_move_diagonal(self, grid, row_offset, col_offset):
         row_check = self.row + row_offset
@@ -75,14 +77,14 @@ class Node:
         ):
             return False
 
-        # 대각선 이동 가능 여부 확인 (모서리에 걸리지 않도록)
-        if grid[self.row][col_check].is_obstacle or grid[self.row + 1][col_check].is_obstacle:
+        # 대각선 이동 시 필요한 검사
+        if grid[self.row - 1][self.col].is_obstacle:  # 위쪽 타일
             return False
-        if grid[row_check][self.col].is_obstacle or grid[row_check + 1][self.col].is_obstacle:
+        if grid[self.row][self.col - 1].is_obstacle:  # 왼쪽 타일
             return False
-
-        # 대각선 방향으로도 장애물이 없어야 함
-        if grid[row_check][col_check].is_obstacle or grid[row_check + 1][col_check].is_obstacle:
+        if grid[self.row - 1][self.col - 1].is_obstacle:  # 대각선 타일
+            return False
+        if grid[self.row + 1][self.col - 1].is_obstacle:  # 아래쪽 타일의 왼쪽 타일
             return False
 
         return True
@@ -90,38 +92,71 @@ class Node:
     def update_neighbors(self, grid):
         self.neighbors = []
 
-        # Vertical & horizontal moves
-        if self.row < ROWS - 2 and not grid[self.row + 2][self.col].is_obstacle:  # DOWN
+        # 수직 및 수평 이동
+        if self.row < ROWS - 2 and not grid[self.row + 2][self.col].is_obstacle:  # 아래로 이동
             if not grid[self.row + 1][self.col].is_obstacle:
                 self.neighbors.append(grid[self.row + 1][self.col])
 
-        if self.row > 0 and not grid[self.row - 1][self.col].is_obstacle:  # UP
+        if self.row > 0 and not grid[self.row - 1][self.col].is_obstacle:  # 위로 이동
             self.neighbors.append(grid[self.row - 1][self.col])
 
-        if self.col < COLS - 1 and not grid[self.row][self.col + 1].is_obstacle:  # RIGHT
+        if self.col < COLS - 1 and not grid[self.row][self.col + 1].is_obstacle:  # 오른쪽으로 이동
             if self.row < ROWS - 1 and not grid[self.row + 1][self.col + 1].is_obstacle:
                 self.neighbors.append(grid[self.row][self.col + 1])
 
-        if self.col > 0 and not grid[self.row][self.col - 1].is_obstacle:  # LEFT
+        if self.col > 0 and not grid[self.row][self.col - 1].is_obstacle:  # 왼쪽으로 이동
             if self.row < ROWS - 1 and not grid[self.row + 1][self.col - 1].is_obstacle:
                 self.neighbors.append(grid[self.row][self.col - 1])
 
-        # Diagonal moves with obstacle checks
-        if self.row > 0 and self.col > 0 and not grid[self.row - 1][self.col - 1].is_obstacle:  # UP-LEFT
-            if self.can_move_diagonal(grid, -1, -1):
+        # 대각선 이동 시 모든 타일에 대한 충돌 검사
+        if self.row > 0 and self.col > 0:  # 위쪽-왼쪽 대각선 이동
+            if (
+                not grid[self.row - 1][self.col].is_obstacle and  # 위쪽 타일
+                not grid[self.row][self.col - 1].is_obstacle and  # 왼쪽 타일
+                not grid[self.row - 1][self.col - 1].is_obstacle and  # 대각선 타일
+                not grid[self.row][self.col].is_obstacle and  # 현재 타일
+                self.row + 1 < ROWS and self.col - 1 >= 0 and  # 경계 조건
+                not grid[self.row + 1][self.col].is_obstacle and  # 아래쪽 타일
+                not grid[self.row + 1][self.col - 1].is_obstacle  # 아래쪽 타일의 왼쪽 타일
+            ):
                 self.neighbors.append(grid[self.row - 1][self.col - 1])
 
-        if self.row > 0 and self.col < COLS - 1 and not grid[self.row - 1][self.col + 1].is_obstacle:  # UP-RIGHT
-            if self.can_move_diagonal(grid, -1, 1):
+        if self.row > 0 and self.col < COLS - 1:  # 위쪽-오른쪽 대각선 이동
+            if (
+                not grid[self.row - 1][self.col].is_obstacle and  # 위쪽 타일
+                not grid[self.row][self.col + 1].is_obstacle and  # 오른쪽 타일
+                not grid[self.row - 1][self.col + 1].is_obstacle and  # 대각선 타일
+                not grid[self.row][self.col].is_obstacle and  # 현재 타일
+                self.row + 1 < ROWS and self.col + 1 < COLS and  # 경계 조건
+                not grid[self.row + 1][self.col].is_obstacle and  # 아래쪽 타일
+                not grid[self.row + 1][self.col + 1].is_obstacle  # 아래쪽 타일의 오른쪽 타일
+            ):
                 self.neighbors.append(grid[self.row - 1][self.col + 1])
 
-        if self.row < ROWS - 2 and self.col > 0 and not grid[self.row + 2][self.col - 1].is_obstacle:  # DOWN-LEFT
-            if self.can_move_diagonal(grid, 1, -1):
+        if self.row < ROWS - 2 and self.col > 0:  # 아래쪽-왼쪽 대각선 이동
+            if (
+                not grid[self.row + 1][self.col].is_obstacle and  # 아래쪽 타일
+                not grid[self.row][self.col - 1].is_obstacle and  # 왼쪽 타일
+                not grid[self.row + 1][self.col - 1].is_obstacle and  # 대각선 타일
+                not grid[self.row][self.col].is_obstacle and  # 현재 타일
+                self.row - 1 >= 0 and self.col - 1 >= 0 and  # 경계 조건
+                not grid[self.row - 1][self.col].is_obstacle and  # 위쪽 타일
+                not grid[self.row - 1][self.col - 1].is_obstacle  # 위쪽 타일의 왼쪽 타일
+            ):
                 self.neighbors.append(grid[self.row + 1][self.col - 1])
 
-        if self.row < ROWS - 2 and self.col < COLS - 1 and not grid[self.row + 2][self.col + 1].is_obstacle:  # DOWN-RIGHT
-            if self.can_move_diagonal(grid, 1, 1):
+        if self.row < ROWS - 2 and self.col < COLS - 1:  # 아래쪽-오른쪽 대각선 이동
+            if (
+                not grid[self.row + 1][self.col].is_obstacle and  # 아래쪽 타일
+                not grid[self.row][self.col + 1].is_obstacle and  # 오른쪽 타일
+                not grid[self.row + 1][self.col + 1].is_obstacle and  # 대각선 타일
+                not grid[self.row][self.col].is_obstacle and  # 현재 타일
+                self.row - 1 >= 0 and self.col + 1 < COLS and  # 경계 조건
+                not grid[self.row - 1][self.col].is_obstacle and  # 위쪽 타일
+                not grid[self.row - 1][self.col + 1].is_obstacle  # 위쪽 타일의 오른쪽 타일
+            ):
                 self.neighbors.append(grid[self.row + 1][self.col + 1])
+
 
 def heuristic(p1, p2):
     x1, y1 = p1
@@ -154,9 +189,13 @@ def a_star_algorithm(draw, grid, start, end):
         open_set_hash.remove(current)
 
         # 목표 도달 여부 검사
-        if current == end or (current.row + 1 == end.row and current.col == end.col):
+       # if current == end or (current.row + 1 == end.row and current.col == end.col):
+        #    reconstruct_path(came_from, end, draw)
+         #   return True
+        if current == end:
             reconstruct_path(came_from, end, draw)
             return True
+
 
         for neighbor in current.neighbors:
             temp_g_score = current.g + 1
@@ -173,8 +212,7 @@ def a_star_algorithm(draw, grid, start, end):
 
         draw()
 
-        if current != start:
-            current.color = GREY
+
 
     return False
 
