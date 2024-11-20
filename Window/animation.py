@@ -1,16 +1,15 @@
 import pygame
-import time
 
 class Animation:
-    def __init__(self, texture, num_frames, frame_length, loop=True):
+    def __init__(self, sprite_sheet, num_frames, frame_length, loop):
         """
         애니메이션 클래스 초기화
-        :param texture: 애니메이션 스프라이트 시트
+        :param sprite_sheet: 애니메이션 스프라이트 시트
         :param num_frames: 프레임 수
         :param frame_length: 각 프레임의 지속 시간 (초)
         :param loop: 애니메이션 반복 여부
         """
-        self.texture = texture
+        self.sprite_sheet = sprite_sheet
         self.num_frames = num_frames
         self.frame_length = frame_length
         self.loop = loop
@@ -18,8 +17,8 @@ class Animation:
         self.current_frame = 0
         self.frame_timer = 0
 
-        self.frame_width = texture.get_width() // num_frames
-        self.frame_height = texture.get_height()
+        self.frame_width = sprite_sheet.get_width() // num_frames
+        self.frame_height = sprite_sheet.get_height()
         self.finished = False
 
     def update(self, dt):

@@ -1,0 +1,19 @@
+{
+    "controls": {
+        "move_left": 102,
+        "move_right": 107,
+        "jump": 122,
+        "Move Left": 97,
+        "Move Right": 100,
+        "Jump": 122
+    },
+    "player_progress": {
+        "level": 1,
+        "stage": 1,
+        "experience": 0
+    },
+    "settings": {
+        "sound_volume": 0.5,
+        "music_volume": 0.5
+    }
+}
