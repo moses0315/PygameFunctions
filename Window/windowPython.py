@@ -1,6 +1,7 @@
 import pygame
 import sys
 import math
+import time
 
 LOGICAL_WIDTH, LOGICAL_HEIGHT = 400, 300
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
