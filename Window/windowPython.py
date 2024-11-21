@@ -11,7 +11,8 @@ default_data = {
     "controls": {
         "move_left": pygame.K_LEFT,
         "move_right": pygame.K_RIGHT,
-        "jump": pygame.K_SPACE,
+        "attack": pygame.K_z,
+        "dash": pygame.K_SPACE,
     },
     "player_progress": {
         "level": 1,
@@ -82,23 +83,6 @@ class Button:
         self.is_pressed = False
         self.state = "normal"
 
-    def draw(self, surface):
-        if self.state == "normal":
-            draw_color = self.color
-        elif self.state == "hover":
-            draw_color = tuple(min(c + 40, 255) for c in self.color)
-        elif self.state == "pressed":
-            draw_color = tuple(max(c - 40, 0) for c in self.color)
-        elif self.state == "focus":
-            draw_color = (255, 255, 255)
-        else:
-            draw_color = self.color
-        pygame.draw.rect(surface, draw_color, self.rect)
-        if self.text:
-            text_surface = self.font.render(self.text, False, self.text_color)
-            text_rect = text_surface.get_rect(center=self.rect.center)
-            surface.blit(text_surface, text_rect)
-
     def handle_event(self, event, logical_x, logical_y):
         if event.type == pygame.MOUSEMOTION:
             if self.state in ("pressed", "focus"):
@@ -119,6 +103,23 @@ class Button:
             self.state = "normal"
             self.is_pressed = False
         return False
+
+    def draw(self, surface):
+        if self.state == "normal":
+            draw_color = self.color
+        elif self.state == "hover":
+            draw_color = tuple(min(c + 40, 255) for c in self.color)
+        elif self.state == "pressed":
+            draw_color = tuple(max(c - 40, 0) for c in self.color)
+        elif self.state == "focus":
+            draw_color = (255, 255, 255)
+        else:
+            draw_color = self.color
+        pygame.draw.rect(surface, draw_color, self.rect)
+        if self.text:
+            text_surface = self.font.render(self.text, False, self.text_color)
+            text_rect = text_surface.get_rect(center=self.rect.center)
+            surface.blit(text_surface, text_rect)
 
 
 class Camera:
@@ -194,13 +195,25 @@ class Animation:
 
 class Player:
     def __init__(self, x, y, controls):
-        self.image = pygame.image.load("player.png").convert_alpha()
-        self.rect = self.image.get_rect(topleft=(x, y))
+        self.idle_animation = Animation("idle.png", num_frames=4, frame_length=0.15)
+        self.attack_animation = Animation("attack.png", num_frames=5, frame_length=0.1, loop=False)
+        self.dash_animation = Animation("dash.png", num_frames=5, frame_length=0.1, loop=False)
+
+        self.current_animation = self.idle_animation
+
+        self.rect = pygame.Rect(x, y, 50, 100)
         self.x = x
         self.y = y
         self.speed = 100
         self.pressed_directions = [0]
         self.controls = controls
+
+        self.health = 100
+        self.is_dead = False
+
+        self.is_attacking = False
+        self.attack_frame_active = False
+        self.is_dashing = False
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -216,13 +229,38 @@ class Player:
 
     def update(self, delta_time):
         keys = pygame.key.get_pressed()
-        if keys[self.controls["jump"]]:
-            print("Jump!!")
+        if keys[self.controls["attack"]]:
+            self.is_attacking = True
+            self.current_animation = self.attack_animation.reset()
+        if keys[self.controls["dash"]]:
+            print("Dash!!")
+
+        self.current_animation.update(delta_time)
+
+        if self.is_attacking:
+            self.attack()
+
         self.x += self.pressed_directions[-1] * self.speed * delta_time
         self.rect.topleft = (self.x, self.y)
 
     def draw(self, surface):
-        surface.blit(self.image, self.rect.topleft)
+        pygame.draw.rect(surface, (100, 100, 100), self.rect)
+        self.current_animation.draw(surface, self.rect)
+
+    def attack(self):
+        if self.current_animation.current_frame == 2 and not self.attack_frame_active:
+            self.attack_frame_active = True
+            print("Attack hit!")
+        if self.current_animation.finished:
+            self.is_attacking = False
+            self.attack_frame_active = False
+            self.current_animation = self.idle_animation.reset()
+
+    def take_damage(self, damage):
+        self.health -= damage
+        if self.health <= 0:
+            self.is_dead = True
+
 
 
 class MainScene:
@@ -230,7 +268,7 @@ class MainScene:
         self.switch_scene = switch_scene
         self.buttons = [
             Button(0, 0, 200, 50, pygame.Color("darkkhaki"), text="Play"),
-            Button(0, 50, 200, 50, (0, 200, 0), text="Settings"),
+            Button(0, 50, 200, 50, pygame.Color("green4"), text="Settings"),
             Button(0, 100, 200, 50, (200, 0, 0), text="Quit"),
         ]
         self.background = pygame.image.load("main_scene_bg.png").convert()
@@ -303,7 +341,8 @@ class SettingsScene:
         self.action_buttons = {
             "move_left": Button(100, 100, 200, 50, (100, 100, 200), text=f"move_left: {pygame.key.name(self.controls['move_left'])}"),
             "move_right": Button(100, 160, 200, 50, (100, 100, 200), text=f"move_right: {pygame.key.name(self.controls['move_right'])}"),
-            "jump": Button(100, 220, 200, 50, (100, 100, 200), text=f"jump: {pygame.key.name(self.controls['jump'])}"),
+            "attack": Button(100, 220, 200, 50, (100, 100, 200), text=f"attack: {pygame.key.name(self.controls['attack'])}"),
+            "dash": Button(100, 280, 200, 50, (100, 100, 200), text=f"dash: {pygame.key.name(self.controls['dash'])}"),
         }
 
     def handle_event(self, event, logical_x, logical_y):
@@ -341,6 +380,7 @@ def main():
     logical_surface = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT))
     current_scene = None
     game_data = load_game()
+    save_game(game_data)
     scale, offset_x, offset_y, scaled_width, scaled_height = calculate_letterbox(LOGICAL_WIDTH, LOGICAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT)
 
     def switch_scene(scene_name):

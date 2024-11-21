@@ -2,7 +2,8 @@
     "controls": {
         "move_left": 1073741904,
         "move_right": 1073741903,
-        "jump": 122
+        "attack": 120,
+        "dash": 99
     },
     "player_progress": {
         "level": 1,
