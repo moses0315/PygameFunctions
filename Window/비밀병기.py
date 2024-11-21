@@ -229,7 +229,7 @@ class MainScene:
     def __init__(self, switch_scene):
         self.switch_scene = switch_scene
         self.buttons = [
-            Button(0, 0, 200, 50, pygame.Color("darkkhaki"), text="Play"),
+            Button(0, 0, 200, 50, pygame.Color(255, 255, 0, 100), text="Play"),
             Button(0, 50, 200, 50, (0, 200, 0), text="Settings"),
             Button(0, 100, 200, 50, (200, 0, 0), text="Quit"),
         ]
