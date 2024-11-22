@@ -4,7 +4,7 @@ import math
 import json
 import os
 
-LOGICAL_WIDTH, LOGICAL_HEIGHT = 1280, 720
+LOGICAL_WIDTH, LOGICAL_HEIGHT = 400, 300
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 SAVE_FILE = "save_data.json"
 default_data = {
@@ -181,8 +181,9 @@ class Animation:
                     self.finished = True
                     self.current_frame = self.num_frames - 1
 
-    def draw(self, surface, rect):
+    def draw(self, surface, rect, flip):
         current_frame_image = self.frames[self.current_frame]
+        current_frame_image = pygame.transform.flip(current_frame_image, flip, False)
         self.rect.midbottom = rect.midbottom
         surface.blit(current_frame_image, self.rect)
 
@@ -196,16 +197,20 @@ class Animation:
 class Player:
     def __init__(self, x, y, controls):
         self.idle_animation = Animation("idle.png", num_frames=4, frame_length=0.15)
-        self.attack_animation = Animation("attack.png", num_frames=5, frame_length=0.1, loop=False)
-        self.dash_animation = Animation("dash.png", num_frames=5, frame_length=0.1, loop=False)
+        self.run_animation = Animation("run.png", num_frames=4, frame_length=0.15)
+        self.attack_animation = Animation("attack.png", num_frames=4, frame_length=0.1, loop=False)
+        self.dash_animation = Animation("dash.png", num_frames=3, frame_length=0.05, loop=False)
 
         self.current_animation = self.idle_animation
 
         self.rect = pygame.Rect(x, y, 50, 100)
         self.x = x
         self.y = y
-        self.speed = 100
+        self.speed = 130
+        self.base_dash_speed = 500
+        self.dash_speed = self.base_dash_speed
         self.pressed_directions = [0]
+        self.facing_right = True
         self.controls = controls
 
         self.health = 100
@@ -213,7 +218,10 @@ class Player:
 
         self.is_attacking = False
         self.attack_frame_active = False
+        self.dash_cooldown = 0.5
+        self.dash_timer = 0
         self.is_dashing = False
+        self.is_invincible = False
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -229,37 +237,81 @@ class Player:
 
     def update(self, delta_time):
         keys = pygame.key.get_pressed()
-        if keys[self.controls["attack"]]:
+        if keys[self.controls["attack"]] and not self.is_attacking and not self.is_dashing:
             self.is_attacking = True
             self.current_animation = self.attack_animation.reset()
-        if keys[self.controls["dash"]]:
-            print("Dash!!")
+
+        if self.dash_timer > 0:
+            self.dash_timer -= delta_time
+        else:
+            if keys[self.controls["dash"]] and not self.is_attacking and not self.is_dashing:
+                self.is_dashing = True
+                self.dash_timer = self.dash_cooldown
+                self.is_invincible = True
+                self.current_animation = self.dash_animation.reset()
+
+
 
         self.current_animation.update(delta_time)
 
         if self.is_attacking:
             self.attack()
+        elif self.is_dashing:
+            self.dash(delta_time)
+        else:
+            self.move(delta_time)
 
-        self.x += self.pressed_directions[-1] * self.speed * delta_time
         self.rect.topleft = (self.x, self.y)
 
     def draw(self, surface):
-        pygame.draw.rect(surface, (100, 100, 100), self.rect)
-        self.current_animation.draw(surface, self.rect)
+       # pygame.draw.rect(surface, (100, 100, 100), self.rect)
+        self.current_animation.draw(surface, self.rect, not self.facing_right)
+
+    def set_facing_direction(self):
+        if self.pressed_directions[-1] == 1:
+            self.facing_right = True
+        elif self.pressed_directions[-1] == -1:
+            self.facing_right = False
+    
+    def move(self, delta_time):
+        if self.pressed_directions[-1] == 0:
+            self.current_animation = self.idle_animation
+        else:
+            self.current_animation = self.run_animation
+            self.x += self.pressed_directions[-1] * self.speed * delta_time
+            self.set_facing_direction()
+
+    def dash(self, delta_time):
+        if self.facing_right:
+            self.x += self.dash_speed * delta_time
+        else:
+            self.x -= self.dash_speed * delta_time
+
+        if (self.dash_cooldown - self.dash_timer) >= 0.2:
+            self.dash_speed = self.base_dash_speed/(self.dash_timer*10*2)
+        if self.current_animation.current_frame >= 3:
+            self.is_invincible = False
+        if self.current_animation.finished:
+            self.is_dashing = False
+            self.dash_speed = self.base_dash_speed
+            self.current_animation = self.idle_animation.reset()
+            self.set_facing_direction()
 
     def attack(self):
-        if self.current_animation.current_frame == 2 and not self.attack_frame_active:
+        if self.current_animation.current_frame == 1 and not self.attack_frame_active:
             self.attack_frame_active = True
             print("Attack hit!")
         if self.current_animation.finished:
             self.is_attacking = False
             self.attack_frame_active = False
             self.current_animation = self.idle_animation.reset()
+            self.set_facing_direction()
 
     def take_damage(self, damage):
-        self.health -= damage
-        if self.health <= 0:
-            self.is_dead = True
+        if not self.is_invincible:
+            self.health -= damage
+            if self.health <= 0:
+                self.is_dead = True
 
 
 
@@ -304,12 +356,14 @@ class PlayScene:
         self.foreground_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT), pygame.SRCALPHA)
         self.canvas_layer = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT), pygame.SRCALPHA)
         self.back_button = Button(5, 5, 100, 50, pygame.Color(255, 255, 0, 0), text="Back")
-        self.player = Player(100, 100, game_data["controls"])
-        self.background = pygame.image.load("play_scene_bg.png").convert()
-        self.floor = pygame.image.load("floor.png").convert_alpha()
+        self.player = Player(100, 110, game_data["controls"])
+        self.background = pygame.image.load("Layer_0009_2.png").convert_alpha()
+        self.background1 = pygame.image.load("Layer_0003_6.png").convert_alpha()
+        self.background2 = pygame.image.load("Layer_0002_7.png").convert_alpha()
+
         for x in range(0, LOGICAL_WIDTH * 2, self.background.get_width()):
-            self.background_layer.blit(self.background, (x, 0))
-        self.midground_layer.blit(self.floor, (0, 230))
+            self.background_layer.blit(self.background, (x, -500))
+        self.midground_layer.blit(self.background1, (0, -500))
 
     def handle_event(self, event, logical_x, logical_y):
         if self.back_button.handle_event(event, logical_x, logical_y):
@@ -322,6 +376,7 @@ class PlayScene:
 
     def draw(self, logical_surface):
         self.foreground_layer.fill((0, 0, 0, 0))
+        self.foreground_layer.blit(self.background2, (0, 0))
         self.player.draw(self.foreground_layer)
         self.back_button.draw(self.canvas_layer)
         logical_surface.blit(self.background_layer, (-self.camera.x * 0.5, 0))
