@@ -334,7 +334,6 @@ class Player:
                 self.is_knocking_back = False
             else:
                 self.x += self.knock_back_power*delta_time
-              #  print(self.knock_back_power)
 
     def take_damage(self, damage, knuck_back_power, knuck_back_time):
         if not self.is_invincible:
@@ -631,7 +630,7 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
 
     while running:
-        delta_time = min(clock.tick(10) / 1000.0, 0.1)
+        delta_time = min(clock.tick(900) / 1000.0, 0.02)
         for event in pygame.event.get():  # 중복되는 부분이라도 각각의 씬에서 처리하도록 변경하기
             if event.type == pygame.QUIT:
                 save_game(game_data)

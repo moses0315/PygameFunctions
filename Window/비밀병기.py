@@ -1,462 +1,80 @@
 import pygame
-import sys
-import json
-import os
+from pygame.locals import *
 
+pygame.init()
 
-LOGICAL_WIDTH, LOGICAL_HEIGHT = 400, 300
+# 기본 설정
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
-SAVE_FILE = "save_data.json"
-default_data = {
-    "controls": {
-        "move_left": pygame.K_LEFT,
-        "move_right": pygame.K_RIGHT,
-        "attack": pygame.K_z,
-        "dash": pygame.K_SPACE,
-    },
-    "player_progress": {
-        "level": 1,
-        "stage": 1,
-        "experience": 0,
-    },
-    "settings": {
-        "sound_volume": 0.5,
-        "music_volume": 0.5,
-    },
-}
-
-def save_game(data, file_path=SAVE_FILE):
-    with open(file_path, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4, ensure_ascii=False)
-    print("Game data saved!")
-
-def load_game(file_path=SAVE_FILE):
-    if not os.path.exists(file_path):
-        print("Game DEFAULT data loaded!")
-        return default_data
-    else:
-        with open(file_path, "r", encoding="utf-8") as file:
-            data = json.load(file)
-        print("Game data loaded!")
-        return data
-
-def calculate_letterbox(logical_width, logical_height, screen_width, screen_height):
-    logical_aspect = logical_width / logical_height
-    screen_aspect = screen_width / screen_height
-    if logical_aspect > screen_aspect:
-        scale = screen_width / logical_width
-        scaled_height = logical_height * scale
-        offset_x = 0
-        offset_y = (screen_height - scaled_height) // 2
-    else:
-        scale = screen_height / logical_height
-        scaled_width = logical_width * scale
-        offset_x = (screen_width - scaled_width) // 2
-        offset_y = 0
-    return scale, (offset_x, offset_y)
-
-def blur_surface(surface, scale_factor=4):
-    small_size = (surface.get_width() // scale_factor, surface.get_height() // scale_factor)
-    small_surface = pygame.transform.smoothscale(surface, small_size)  # 다운스케일
-    return pygame.transform.smoothscale(small_surface, surface.get_size())  # 업스케일
-
-
-class Button:
-    def __init__(self, rect, color, text="", text_size=32, text_color=(0, 0, 0)):
-        self.rect = rect
-        self.surface = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-        self.color = color
-        self.text = text
-        self.text_color = text_color
-        self.font = pygame.font.Font(None, text_size)
-        self.state = "normal"
-
-    def handle_event(self, event, mouse_position):
-        if event.type == pygame.MOUSEMOTION:
-            if self.state in ("press", "focus"):
-                pass
-            elif self.rect.collidepoint(mouse_position):
-                self.state = "hover"
-            else:
-                self.state = "normal"
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(mouse_position):
-                self.state = "press"
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if self.state == "press" and self.rect.collidepoint(mouse_position):
-                self.state = "focus"
-                return True
-            self.state = "normal"
-        return False
-
-    def draw(self, surface):
-        if self.state == "normal":
-            draw_color = self.color
-        elif self.state == "hover":
-            draw_color = tuple(min(c + 40, 255) for c in self.color)
-        elif self.state == "press":
-            draw_color = tuple(max(c - 40, 0) for c in self.color)
-        elif self.state == "focus":
-            draw_color = (255, 255, 255)
-        self.surface.fill(draw_color)
-        if self.text:
-            text_surface = self.font.render(self.text, False, self.text_color)
-            text_rect = text_surface.get_rect(center=self.rect.center)
-            self.surface.blit(text_surface, text_rect)
-        surface.blit(self.surface, self.rect)
-
-
-class Camera:
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.x = 0
-        self.y = 0
-
-    def update(self, target_rect, map_width, map_height):
-        self.x = target_rect.centerx - self.width // 2
-        self.y = target_rect.centery - self.height // 2
-        self.x = max(0, min(self.x, map_width - self.width))
-        self.y = max(0, min(self.y, map_height - self.height))
-
-    def apply(self, surface):
-        return surface, (-self.x, -self.y)
-
-
-class Animation:
-    def __init__(self, sprite_sheet_path, num_frames, frame_length, loop=True):
-        self.sprite_sheet = pygame.image.load(sprite_sheet_path).convert_alpha()
-        self.num_frames = num_frames
-        self.frame_length = frame_length
-        self.loop = loop
-
-        self.frame_width = self.sprite_sheet.get_width() // num_frames
-        self.frame_height = self.sprite_sheet.get_height()
-        self.frames = self.load_frames()
-
-        self.current_frame = 0
-        self.accumulated_time = 0
-        self.finished = False
-
-        self.rect = pygame.rect.Rect(0, 0, self.frame_width, self.frame_height)
-
-    def load_frames(self):
-        frames = []
-        for i in range(self.num_frames):
-            frame_rect = pygame.Rect(i * self.frame_width, 0, self.frame_width, self.frame_height)
-            frame = self.sprite_sheet.subsurface(frame_rect)
-            frames.append(frame)
-        return frames
-
-    def update(self, dt):
-        if self.finished:
-            return
-
-        self.accumulated_time += dt
-
-        while self.accumulated_time >= self.frame_length:
-            self.accumulated_time -= self.frame_length
-            self.current_frame += 1
-
-            if self.current_frame == self.num_frames:
-                if self.loop:
-                    self.current_frame = 0
-                else:
-                    self.finished = True
-                    self.current_frame = self.num_frames - 1
-
-    def draw(self, surface, rect, flip):
-        current_frame_image = self.frames[self.current_frame]
-        current_frame_image = pygame.transform.flip(current_frame_image, flip, False)
-        self.rect.midbottom = rect.midbottom
-        surface.blit(current_frame_image, self.rect)
-
-    def reset(self):
-        self.current_frame = 0
-        self.accumulated_time = 0
-        self.finished = False
-        return self
-
-
-class Player:
-    def __init__(self, x, y, controls):
-        self.idle_animation = Animation("idle.png", num_frames=4, frame_length=0.15)
-        self.run_animation = Animation("run.png", num_frames=4, frame_length=0.15)
-        self.attack_animation = Animation("attack.png", num_frames=4, frame_length=0.1, loop=False)
-        self.dash_animation = Animation("dash.png", num_frames=3, frame_length=0.07, loop=False)
-
-        self.current_animation = self.idle_animation
-
-        self.rect = pygame.Rect(x, y, 50, 100)
-        self.x = x
-        self.y = y
-        self.speed = 130
-        self.base_dash_speed = 1000
-        self.dash_speed = self.base_dash_speed
-        self.pressed_directions = [0]
-        self.facing_right = True
-        self.controls = controls
-
-        self.health = 100
-        self.is_dead = False
-
-        self.is_attacking = False
-        self.attack_frame_active = False
-        self.dash_cooldown = 0.5
-        self.dash_timer = 0
-        self.is_dashing = False
-        self.is_invincible = False
-
-    def handle_event(self, event):
-        if event.type == pygame.KEYDOWN:
-            if event.key == self.controls["move_left"]:
-                self.pressed_directions.append(-1)
-            elif event.key == self.controls["move_right"]:
-                self.pressed_directions.append(1)
-        elif event.type == pygame.KEYUP:
-            if event.key == self.controls["move_left"]:
-                self.pressed_directions.remove(-1)
-            elif event.key == self.controls["move_right"]:
-                self.pressed_directions.remove(1)
-
-    def update(self, delta_time):
-        keys = pygame.key.get_pressed()
-        if keys[self.controls["attack"]] and not self.is_attacking and not self.is_dashing:
-            self.is_attacking = True
-            self.current_animation = self.attack_animation.reset()
-
-        if self.dash_timer > 0:
-            self.dash_timer -= delta_time
-        else:
-            if keys[self.controls["dash"]] and not self.is_attacking and not self.is_dashing:
-                self.is_dashing = True
-                self.dash_timer = self.dash_cooldown
-                self.is_invincible = True
-                self.current_animation = self.dash_animation.reset()
-
-
-
-        self.current_animation.update(delta_time)
-
-        if self.is_attacking:
-            self.attack()
-        elif self.is_dashing:
-            self.dash(delta_time)
-        else:
-            self.move(delta_time)
-
-        self.rect.topleft = (self.x, self.y)
-
-    def draw(self, surface):
-       # pygame.draw.rect(surface, (100, 100, 100), self.rect)
-        self.current_animation.draw(surface, self.rect, not self.facing_right)
-
-    def set_facing_direction(self):
-        if self.pressed_directions[-1] == 1:
-            self.facing_right = True
-        elif self.pressed_directions[-1] == -1:
-            self.facing_right = False
-    
-    def move(self, delta_time):
-        if self.pressed_directions[-1] == 0:
-            self.current_animation = self.idle_animation
-        else:
-            self.current_animation = self.run_animation
-            self.x += self.pressed_directions[-1] * self.speed * delta_time
-            self.set_facing_direction()
-
-    def dash(self, delta_time):
-        if self.facing_right:
-            self.x += self.dash_speed * delta_time
-        else:
-            self.x -= self.dash_speed * delta_time
-
-        elapsed_time = self.dash_cooldown - self.dash_timer
-        velocity = 1 / (elapsed_time*60 + 1)
-        self.dash_speed = velocity*self.base_dash_speed
-
-        if self.current_animation.current_frame >= 3:
-            self.is_invincible = False
-        if self.current_animation.finished:
-            self.is_dashing = False
-            self.dash_speed = self.base_dash_speed
-            self.current_animation = self.idle_animation.reset()
-            self.set_facing_direction()
-
-    def attack(self):
-        if self.current_animation.current_frame == 1 and not self.attack_frame_active:
-            self.attack_frame_active = True
-            print("Attack hit!")
-        if self.current_animation.finished:
-            self.is_attacking = False
-            self.attack_frame_active = False
-            self.current_animation = self.idle_animation.reset()
-            self.set_facing_direction()
-
-    def take_damage(self, damage):
-        if not self.is_invincible:
-            self.health -= damage
-            if self.health <= 0:
-                self.is_dead = True
-
-
-
-class MainScene:
-    def __init__(self, switch_scene):
-        self.switch_scene = switch_scene
-        self.buttons = [
-            Button(pygame.Rect(0, 0, 200, 50), pygame.Color("darkkhaki"), text="Play"),
-            Button(pygame.Rect(0, 50, 200, 50), pygame.Color("green4"), text="Settings"),
-            Button(pygame.Rect(0, 100, 200, 50), (200, 0, 0), text="Quit"),
-        ]
-        self.background = pygame.image.load("main_scene_bg.png").convert()
-        self.layer = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT), pygame.SRCALPHA)
-
-    def handle_event(self, event, mouse_position):
-        for button in self.buttons:
-            if button.handle_event(event, mouse_position):
-                if button.text == "Play":
-                    self.switch_scene("play")
-                elif button.text == "Settings":
-                    self.switch_scene("settings")
-                elif button.text == "Quit":
-                    pygame.quit()
-                    sys.exit()
-
-    def update(self, delta_time):
-        pass
-
-    def draw(self, logical_surface):
-        self.layer.blit(self.background, (0, 0))
-        for button in self.buttons:
-            button.draw(self.layer)
-        logical_surface.blit(self.layer, (0, 0))
-
-
-class PlayScene:
-    def __init__(self, switch_scene, game_data):
-        self.switch_scene = switch_scene
-        self.camera = Camera(LOGICAL_WIDTH, LOGICAL_HEIGHT)
-        self.background_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT))
-        self.midground_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT), pygame.SRCALPHA)
-        self.foreground_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT), pygame.SRCALPHA)
-        self.canvas_layer = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT), pygame.SRCALPHA)
-        self.back_button = Button(pygame.Rect(5, 5, 100, 50), pygame.Color(255, 255, 0, 0), text="Back")
-        self.player = Player(100, 110, game_data["controls"])
-        self.background = pygame.image.load("Layer_0009_2.png").convert_alpha()
-        self.background1 = pygame.image.load("Layer_0003_6.png").convert_alpha()
-        self.background2 = pygame.image.load("Layer_0002_7.png").convert_alpha()
-
-        for x in range(0, LOGICAL_WIDTH * 2, self.background.get_width()):
-            self.background_layer.blit(self.background, (x, -500))
-        self.midground_layer.blit(self.background1, (0, -500))
-
-    def handle_event(self, event, mouse_position):
-        if self.back_button.handle_event(event, mouse_position):
-            self.switch_scene("main")
-        self.player.handle_event(event)
-
-    def update(self, delta_time):
-        self.player.update(delta_time)
-        self.camera.update(self.player.rect, LOGICAL_WIDTH * 2, LOGICAL_HEIGHT)
-
-    def draw(self, logical_surface):
-        self.foreground_layer.fill((0, 0, 0, 0))
-        self.foreground_layer.blit(self.background2, (0, 0))
-        self.player.draw(self.foreground_layer)
-        self.back_button.draw(self.canvas_layer)
-        logical_surface.blit(self.background_layer, (-self.camera.x * 0.5, 0))
-        logical_surface.blit(self.midground_layer, (-self.camera.x * 0.7, 0))
-        logical_surface.blit(self.foreground_layer, (-self.camera.x, 0))
-        logical_surface.blit(self.canvas_layer, (0, 0))
-
-
-class SettingsScene:
-    def __init__(self, switch_scene, game_data):
-        self.switch_scene = switch_scene
-        self.game_data = game_data
-        self.controls = game_data["controls"]
-        self.back_button = Button(pygame.Rect(10, 10, 100, 50), (200, 200, 0), text="Back")
-        self.background = pygame.image.load("settings_scene_bg.png").convert()
-        self.selected_action = None
-        self.action_buttons = {
-            "move_left": Button(pygame.Rect(100, 50, 200, 50), (100, 100, 200), text=f"move_left: {pygame.key.name(self.controls['move_left'])}"),
-            "move_right": Button(pygame.Rect(100, 100, 200, 50), (100, 100, 200), text=f"move_right: {pygame.key.name(self.controls['move_right'])}"),
-            "attack": Button(pygame.Rect(100, 150, 200, 50), (100, 100, 200), text=f"attack: {pygame.key.name(self.controls['attack'])}"),
-            "dash": Button(pygame.Rect(100, 200, 200, 50), (100, 100, 200), text=f"dash: {pygame.key.name(self.controls['dash'])}"),
-        }
-
-    def handle_event(self, event, mouse_position):
-        if self.selected_action is None:
-            for action, button in self.action_buttons.items():
-                if button.handle_event(event, mouse_position):
-                    self.selected_action = action
-        else:
-            if event.type == pygame.KEYDOWN:
-                self.controls[self.selected_action] = event.key
-                self.action_buttons[self.selected_action].text = f"{self.selected_action}: {pygame.key.name(event.key)}"
-                self.action_buttons[self.selected_action].state = "normal"
-                save_game(self.game_data)
-                self.selected_action = None
-        if self.back_button.handle_event(event, mouse_position):
-            self.game_data["controls"] = self.controls
-            save_game(self.game_data)
-            self.switch_scene("main")
-
-    def update(self, delta_time):
-        pass
-
-    def draw(self, logical_surface):
-        logical_surface.blit(self.background, (0, 0))
-        for button in self.action_buttons.values():
-            button.draw(logical_surface)
-        self.back_button.draw(logical_surface)
-
-
-if __name__ == "__main__":
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
-    pygame.display.set_caption("Developing Game")
-    logical_surface = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT))
-    current_scene = None
-    game_data = load_game()
-    save_game(game_data)
-    scale, offset = calculate_letterbox(LOGICAL_WIDTH, LOGICAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT)
-
-    def switch_scene(scene_name):
-        global current_scene
-        if scene_name == "main":
-            current_scene = MainScene(switch_scene)
-        elif scene_name == "play":
-            current_scene = PlayScene(switch_scene, game_data)
-        elif scene_name == "settings":
-            current_scene = SettingsScene(switch_scene, game_data)
-
-    switch_scene("main")
-    running = True
-    clock = pygame.time.Clock()
-
-    while running:
-        delta_time = min(clock.tick() / 1000.0, 0.03)
-        for event in pygame.event.get(): #중복되는 부분이라도 각각의 씬에서 처리하도록 변경하기
-            if event.type == pygame.QUIT:
-                save_game(game_data)
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.VIDEORESIZE:
-                SCREEN_WIDTH, SCREEN_HEIGHT = event.w, event.h
-                scale, offset = calculate_letterbox(LOGICAL_WIDTH, LOGICAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT)
-            elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
-                mouse_x = (event.pos[0] - offset[0])/scale
-                mouse_y = (event.pos[1] - offset[1])/scale
-                current_scene.handle_event(event, (mouse_x, mouse_y))
-            elif event.type in (pygame.KEYDOWN, pygame.KEYUP):
-                current_scene.handle_event(event, (-100, -100))
-
-        current_scene.update(delta_time)
-        current_scene.draw(logical_surface)
-        screen.fill((0, 0, 0))
-        scaled_surface = pygame.transform.scale(logical_surface, (LOGICAL_WIDTH*scale, LOGICAL_HEIGHT*scale))
-        blured_surface = blur_surface(scaled_surface, scale_factor=2)
-        screen.blit(blured_surface, offset)
-        pygame.display.flip()
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+clock = pygame.time.Clock()
+
+# 색상 정의
+WHITE = (255, 255, 255)
+
+# 플레이어 속성 정의
+player = pygame.Rect(100, 500, 50, 50)
+player_color = (0, 0, 255)
+
+# 공격 관련 변수
+attacking = False
+attack_stage = 0
+attack_buffer_time = 20  # 공격 입력 버퍼 유지 프레임 수
+attack_buffer_counter = 0
+combo_reset_time = 30  # 콤보가 끝난 후 초기화까지의 시간
+combo_reset_counter = 0
+
+# 게임 루프
+running = True
+while running:
+    screen.fill(WHITE)
+
+    # 이벤트 처리
+    for event in pygame.event.get():
+        if event.type == QUIT:
+            running = False
+
+    # 키 입력 처리
+    keys = pygame.key.get_pressed()
+    if keys[K_z]:
+        attack_buffer_counter = attack_buffer_time  # 공격 키가 눌리면 버퍼 카운터 초기화
+
+    # 공격 콤보 입력 처리
+    if attack_buffer_counter > 0:
+        attack_buffer_counter -= 1
+
+    if not attacking and attack_buffer_counter > 0:
+        # 공격이 가능한 상태이면 콤보 스테이지에 따라 공격 시작
+        attacking = True
+        attack_stage = (attack_stage + 1) % 3  # 콤보는 3단계로 반복됨
+        attack_buffer_counter = 0
+        combo_reset_counter = combo_reset_time
+
+    # 공격 애니메이션 상태 처리
+    if attacking:
+        if attack_stage == 0:
+            player_color = (255, 0, 0)  # 공격1 - 빨간색
+        elif attack_stage == 1:
+            player_color = (0, 255, 0)  # 공격2 - 초록색
+        elif attack_stage == 2:
+            player_color = (0, 0, 255)  # 공격3 - 파란색 (더 강한 공격)
+
+        # 여기에서는 단순히 일정 시간 후 공격이 끝난다고 가정
+        combo_reset_counter -= 1
+        if combo_reset_counter <= 0:
+            attacking = False
+            player_color = (0, 0, 0)  # 공격이 끝나면 색상 리셋
+
+    # 공격이 끝나고 콤보 초기화 시간 경과 시 콤보 리셋
+    if not attacking and combo_reset_counter > 0:
+        combo_reset_counter -= 1
+    if combo_reset_counter <= 0 and attack_stage > 0:
+        attack_stage = 0
+
+    # 플레이어 그리기
+    pygame.draw.rect(screen, player_color, player)
+
+    # 화면 업데이트
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
