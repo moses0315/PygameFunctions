@@ -26,7 +26,6 @@ default_data = {
     },
 }
 
-
 def save_game(data, file_path=SAVE_FILE):
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
@@ -209,6 +208,7 @@ class Player:
         self.attack_dash_distance = 30
         self.attack_dash_speed = self.attack_dash_distance / (self.attack_animation.num_frames*self.attack_animation.frame_length)
         self.pressed_directions = [0]
+        self.pressed_actions = ["null"]
         self.facing_right = True
         self.controls = controls
 
@@ -228,29 +228,39 @@ class Player:
         self.knock_back_timer = 0
         self.enemies = []
 
+        self.states = {"normal":"normal", "attack":"attack", "dash":"dash", "hurt":"hurt"}
+        self.state = self.states["normal"]
+
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == self.controls["move_left"]:
                 self.pressed_directions.append(-1)
             elif event.key == self.controls["move_right"]:
                 self.pressed_directions.append(1)
+            elif event.key == self.controls["attack"]:
+                self.pressed_actions.append("attack")
+            elif event.key == self.controls["dash"]:
+                self.pressed_actions.append("dash")
         elif event.type == pygame.KEYUP:
             if event.key == self.controls["move_left"]:
                 self.pressed_directions.remove(-1)
             elif event.key == self.controls["move_right"]:
                 self.pressed_directions.remove(1)
+            elif event.key == self.controls["attack"]:
+                self.pressed_actions.remove("attack")
+            elif event.key == self.controls["dash"]:
+                self.pressed_actions.remove("dash")
 
     def update(self, enemies, delta_time):
         self.enemies = enemies
-        keys = pygame.key.get_pressed()
-        if keys[self.controls["attack"]] and not self.is_attacking and not self.is_dashing and not self.is_hurt:
+        if self.pressed_actions[-1] == "attack" and not self.is_attacking and not self.is_dashing and not self.is_hurt:
             self.is_attacking = True
             self.current_animation = self.attack_animation.reset()
 
         if self.dash_timer > 0:
             self.dash_timer -= delta_time
         else:
-            if keys[self.controls["dash"]] and not self.is_attacking and not self.is_dashing and not self.is_hurt:
+            if self.pressed_actions[-1] == "dash" and not self.is_attacking and not self.is_dashing and not self.is_hurt:
                 self.is_dashing = True
                 self.dash_timer = self.dash_cooldown_timer
                 self.is_invincible = True
@@ -609,7 +619,7 @@ class SettingsScene:
 if __name__ == "__main__":
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
-    pygame.display.set_caption("Developing Game")
+    pygame.display.set_caption("You must know this: Holding down a key will execute it continuously. You do not need to press the key repeatedly.")
     logical_surface = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT))
     current_scene = None
     game_data = load_game()
