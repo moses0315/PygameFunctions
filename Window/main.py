@@ -70,6 +70,12 @@ def blur_surface(surface, scale_factor=4):
 
 
 class Button:
+    class State(Enum):
+        NORMAL = auto()
+        HOVER = auto()
+        PRESS = auto()
+        FOCUS = auto()
+
     def __init__(self, rect, color, text="", text_size=32, text_color=(0, 0, 0)):
         self.rect = rect
         self.surface = pygame.Surface(self.rect.size, pygame.SRCALPHA)
@@ -78,42 +84,42 @@ class Button:
         self.text = text
         self.text_color = text_color
         self.font = pygame.font.Font(None, text_size)
-        self.state = "normal"
+        self.state = Button.State.NORMAL
 
     def handle_event(self, event, mouse_position):
         if event.type == pygame.MOUSEMOTION:
-            if self.state in ("press", "focus"):
+            if self.state in (Button.State.PRESS, Button.State.FOCUS):
                 pass
             elif self.rect.collidepoint(mouse_position):
-                self.state = "hover"
+                self.state = Button.State.HOVER
             else:
-                self.state = "normal"
+                self.state = Button.State.NORMAL
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse_position):
-                self.state = "press"
+                self.state = Button.State.PRESS
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            if self.state == "press" and self.rect.collidepoint(mouse_position):
-                self.state = "focus"
+            if self.state == Button.State.PRESS and self.rect.collidepoint(mouse_position):
+                self.state = Button.State.FOCUS
                 return True
-            self.state = "normal"
+            self.state = Button.State.NORMAL
         return False
 
     def draw(self, surface):
-        if self.state == "normal":
+        if self.state == Button.State.NORMAL:
             draw_color = self.color
-        elif self.state == "hover":
+        elif self.state == Button.State.HOVER:
             r = min(self.color[0] + 40, 255)
             g = min(self.color[1] + 40, 255)
             b = min(self.color[2] + 40, 255)
             a = min(self.color[3] + 40, 255)
             draw_color = (r, g, b, a)
-        elif self.state == "press":
+        elif self.state == Button.State.PRESS:
             r = max(self.color[0] - 40, 0)
             g = max(self.color[1] - 40, 0)
             b = max(self.color[2] - 40, 0)
             a = max(self.color[3] + 40, 0)
             draw_color = (r, g, b, a)
-        elif self.state == "focus":
+        elif self.state == Button.State.FOCUS:
             draw_color = (255, 255, 255, 255)
         self.surface.fill(draw_color)
         if self.text:
@@ -251,8 +257,8 @@ class Player:
         self.knocked_back_power = 0
         self.knocked_back_timer = 0
 
-        self.attack_buffer_time = 0.1
-        self.attack_buffer_timer = 0
+        self.attack_combo_time = 0.5
+        self.attack_combo_timer = 0
         self.attack_combo = 0
         self.current_attack = self.attack_data[self.attack_combo]
 
@@ -269,7 +275,7 @@ class Player:
         self.knock_back_time = 0.1
 
         self.dash_cooldown_time = 0.5
-        self.dash_timer = 0
+        self.dash_cooldown_timer = 0
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -316,9 +322,9 @@ class Player:
                 self.attack_combo += 1
                 if self.attack_combo >= 3:
                     self.attack_combo = 0
-            elif self.pressed_actions[-1] == "dash" and self.dash_timer <= 0:
+            elif self.pressed_actions[-1] == "dash" and self.dash_cooldown_timer <= 0:
                 self.state = Player.State.DASH
-                self.dash_timer = self.dash_cooldown_time
+                self.dash_cooldown_timer = self.dash_cooldown_time
                 self.is_invincible = True
                 self.current_animation = self.dash_animation.reset()
             else:
@@ -329,13 +335,15 @@ class Player:
                     self.x += self.pressed_directions[-1] * self.speed * delta_time
                     self.set_facing_direction()
 
-        if self.dash_timer > 0:
-            self.dash_timer -= delta_time
+        if self.dash_cooldown_timer > 0:
+            self.dash_cooldown_timer -= delta_time
 
-        if self.attack_buffer_timer > 0:
-            self.attack_buffer_timer -= delta_time
-        elif self.state != Player.State.ATTACK:
-            self.attack_combo = 0
+        if self.attack_combo_timer > 0:
+            self.attack_combo_timer -= delta_time
+        if self.state != Player.State.ATTACK:
+            if self.attack_combo_timer <= 0:
+                self.attack_combo = 0
+
         self.current_animation.update(delta_time)
         self.rect.topleft = (self.x, self.y)
 
@@ -392,7 +400,7 @@ class Player:
             self.is_attack_frame_active = False
             self.current_animation = self.idle_animation.reset()
             self.set_facing_direction()
-            self.attack_buffer_timer = self.attack_buffer_time
+            self.attack_combo_timer = self.attack_combo_time
 
     def hurt(self, delta_time):
         if self.current_animation.finished:
@@ -420,6 +428,12 @@ class Player:
 
 
 class Enemy:
+    class State(Enum):
+        NORMAL = auto()
+        ATTACK = auto()
+        HURT = auto()
+        DEAD = auto()
+
     def __init__(self, x, y):
         self.idle_animation = Animation("assets/Knight/tile000.png", num_frames=9, frame_length=0.1)
         self.run_animation = Animation("assets/Knight/tile001.png", num_frames=6, frame_length=0.1)
@@ -448,7 +462,7 @@ class Enemy:
         self.knuck_back_distance = 50
         self.knock_back_time = 0.1
 
-        self.state = "normal"
+        self.state = Enemy.State.NORMAL
         self.chase_range = 150
         self.attack_range = 40
         self.attack_rect = pygame.Rect(self.rect.centerx, self.rect.top, 40, 50)
@@ -458,18 +472,18 @@ class Enemy:
     def update(self, player, delta_time):
         self.player = player
         match self.state:
-            case "dead":
+            case Enemy.State.DEAD:
                 return
-            case "hurt":
+            case Enemy.State.HURT:
                 self.hurt(delta_time)
-            case "attack":
+            case Enemy.State.ATTACK:
                 self.attack(delta_time)
 
-        if self.state == "normal":
+        if self.state == Enemy.State.NORMAL:
             distance_to_player = abs(self.rect.centerx - self.player.rect.centerx) - self.player.rect.w / 2
             if distance_to_player < self.attack_range:
                 self.set_facing_direction()
-                self.state = "attack"
+                self.state = Enemy.State.ATTACK
                 self.current_animation = self.attack_animation.reset()
             elif distance_to_player <= self.chase_range:
                 self.current_animation = self.run_animation
@@ -526,7 +540,7 @@ class Enemy:
                     self.player.take_damage(10, knuck_back_direction, self.knuck_back_distance, self.knock_back_time)
 
         if self.current_animation.finished:
-            self.state = "normal"
+            self.state = Enemy.State.NORMAL
             self.is_attack_frame_active = False
             self.set_facing_direction()
 
@@ -534,7 +548,7 @@ class Enemy:
 
     def hurt(self, delta_time):
         if self.current_animation.finished:
-            self.state = "normal"
+            self.state = Enemy.State.NORMAL
             self.set_facing_direction()
         if self.is_being_knocked_back:
             self.knocked_back_timer -= delta_time
@@ -545,14 +559,14 @@ class Enemy:
 
     def take_damage(self, damage, knuck_back_direction, knuck_back_distance, knuck_back_time):
         if not self.is_invincible:
-            self.state = "hurt"
+            self.state = Enemy.State.HURT
             self.current_animation = self.hurt_animation.reset()
             self.health -= damage
             self.knocked_back_power = (knuck_back_direction * knuck_back_distance) / knuck_back_time
             self.knocked_back_timer = knuck_back_time
             self.is_being_knocked_back = True
             if self.health <= 0:
-                self.state = "dead"
+                self.state = Enemy.State.DEAD
 
 
 class MainScene:
@@ -619,7 +633,7 @@ class PlayScene:
         self.player.update(self.enemies, delta_time)
         for enemy in self.enemies:
             enemy.update(self.player, delta_time)
-            if enemy.state == "dead":
+            if enemy.state == Enemy.State.DEAD:
                 self.enemies.remove(enemy)
         self.camera.update(self.player.rect, LOGICAL_WIDTH * 2, LOGICAL_HEIGHT)
 
@@ -660,7 +674,7 @@ class SettingsScene:
         if event.type == pygame.KEYDOWN:
             self.controls[self.selected_action] = event.key
             self.action_buttons[self.selected_action].text = f"{self.selected_action}: {pygame.key.name(event.key)}"
-            self.action_buttons[self.selected_action].state = "normal"
+            self.action_buttons[self.selected_action].state = Button.State.NORMAL
             save_game(self.game_data)
             self.selected_action = None
         if self.back_button.handle_event(event, mouse_position):
