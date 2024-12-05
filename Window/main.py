@@ -2,6 +2,8 @@ import pygame
 import sys
 import json
 import os
+from dataclasses import dataclass
+from enum import Enum, auto
 
 DEBUG = True
 
@@ -25,6 +27,7 @@ default_data = {
         "music_volume": 0.5,
     },
 }
+a = 1
 
 
 def save_game(data, file_path=SAVE_FILE):
@@ -188,14 +191,44 @@ class Animation:
         self.finished = False
         return self
 
+@dataclass
+class AttackData:
+    animation: Animation  # 애니메이션
+    active_frame: int     # 공격 활성 프레임
+    dash_frame: int       # 대시 프레임
 
 class Player:
+    class State(Enum):
+        NORMAL = auto()
+        ATTACK = auto()
+        DASH = auto()
+        HURT = auto()
+        DEAD = auto()
+
     def __init__(self, x, y, controls):
         self.idle_animation = Animation("assets/player/Fire_Warrior_FireSwordIdle.png", num_frames=8, frame_length=0.1)
         self.run_animation = Animation("assets/player/Fire_Warrior_FireSwordRun.png", num_frames=8, frame_length=0.1)
-        self.attack_animation = Animation("assets/player/Fire_Warrior_FireSwordAttack2.png", num_frames=4, frame_length=0.1, loop=False)
+        self.attack_data = (
+            AttackData(
+                animation=Animation("assets/player/Fire_Warrior_FireSwordAttack1.png", num_frames=5, frame_length=0.1, loop=False),
+                active_frame=2,
+                dash_frame=0
+            ),
+            AttackData(
+                animation=Animation("assets/player/Fire_Warrior_FireSwordAttack2.png", num_frames=4, frame_length=0.1, loop=False),
+                active_frame=1,
+                dash_frame=1
+            ),
+            AttackData(
+                animation=Animation("assets/player/Fire_Warrior_FireSwordAttack3.png", num_frames=8, frame_length=0.1, loop=False),
+                active_frame=3,
+                dash_frame=2
+            ),
+        )
+
         self.dash_animation = Animation("assets/player/Fire_Warrior_FireSwordDash.png", num_frames=4, frame_length=0.3 / 7, loop=False)
         self.hurt_animation = Animation("assets/player/Fire_Warrior_FireSwordHit.png", num_frames=4, frame_length=0.2 / 4, loop=False)
+        self.death_animation = Animation("assets/player/Fire_Warrior_FireSwordDeath.png", num_frames=11, frame_length=0.1, loop=False)
         self.current_animation = self.idle_animation
 
         self.rect = pygame.Rect(x, y, 24, 50)
@@ -205,7 +238,7 @@ class Player:
         self.dash_distance = 100
         self.dash_speed = self.dash_distance / (self.dash_animation.num_frames * self.dash_animation.frame_length)
         self.attack_dash_distance = 20
-        self.attack_dash_speed = self.attack_dash_distance / (self.attack_animation.frame_length)
+        self.attack_dash_speed = self.attack_dash_distance / 0.1
 
         self.controls = controls
         self.pressed_directions = [0]
@@ -217,17 +250,25 @@ class Player:
         self.is_being_knocked_back = False
         self.knocked_back_power = 0
         self.knocked_back_timer = 0
+
+        self.attack_buffer_time = 0.1
+        self.attack_buffer_timer = 0
+        self.attack_combo = 0
+        self.current_attack = self.attack_data[self.attack_combo]
+
         self.enemies = []
 
-        self.state = "normal"
-        self.attack_frame_active = False
+        self.state = Player.State.NORMAL
+
+
+        self.is_attack_frame_active = False
 
         self.attack_rect = pygame.Rect(self.rect.centerx, self.rect.top, 45, 50)
 
         self.knuck_back_distance = 20
         self.knock_back_time = 0.1
 
-        self.dash_cooldown_timer = 0.5
+        self.dash_cooldown_time = 0.5
         self.dash_timer = 0
 
     def handle_event(self, event):
@@ -252,23 +293,32 @@ class Player:
 
     def update(self, enemies, delta_time):
         match self.state:
-            case "dead":
-                return
-            case "hurt":
+            case Player.State.DEAD:
+                if self.death_animation.finished:
+                    return
+                else:
+                    self.current_animation = self.death_animation
+
+            case Player.State.HURT:
                 self.hurt(delta_time)
-            case "attack":
+
+            case Player.State.ATTACK:
                 self.enemies = enemies
-                self.attack(delta_time)
-            case "dash":
+                self.attack(self.current_attack.active_frame, self.current_attack.dash_frame, delta_time)
+            case Player.State.DASH:
                 self.dash(delta_time)
 
-        if self.state == "normal":
+        if self.state == Player.State.NORMAL:
             if self.pressed_actions[-1] == "attack":
-                self.state = "attack"
-                self.current_animation = self.attack_animation.reset()
+                self.state = Player.State.ATTACK
+                self.current_attack = self.attack_data[self.attack_combo]
+                self.current_animation = self.current_attack.animation.reset()
+                self.attack_combo += 1
+                if self.attack_combo >= 3:
+                    self.attack_combo = 0
             elif self.pressed_actions[-1] == "dash" and self.dash_timer <= 0:
-                self.state = "dash"
-                self.dash_timer = self.dash_cooldown_timer
+                self.state = Player.State.DASH
+                self.dash_timer = self.dash_cooldown_time
                 self.is_invincible = True
                 self.current_animation = self.dash_animation.reset()
             else:
@@ -281,6 +331,11 @@ class Player:
 
         if self.dash_timer > 0:
             self.dash_timer -= delta_time
+
+        if self.attack_buffer_timer > 0:
+            self.attack_buffer_timer -= delta_time
+        elif self.state != Player.State.ATTACK:
+            self.attack_combo = 0
         self.current_animation.update(delta_time)
         self.rect.topleft = (self.x, self.y)
 
@@ -309,14 +364,14 @@ class Player:
             self.x -= self.dash_speed * delta_time
 
         if self.current_animation.finished:
-            self.state = "normal"
-            self.is_invincible = False
+            self.state = Player.State.NORMAL
             self.current_animation = self.idle_animation.reset()
+            self.is_invincible = False
             self.set_facing_direction()
 
-    def attack(self, delta_time):
-        if self.current_animation.current_frame == 1 and not self.attack_frame_active:
-            self.attack_frame_active = True
+    def attack(self, attack_active_frame, attack_dash_frame, delta_time):
+        if self.current_animation.current_frame == attack_active_frame and not self.is_attack_frame_active:
+            self.is_attack_frame_active = True
             if self.facing_right:
                 self.attack_rect.x = self.rect.centerx
             else:
@@ -329,18 +384,19 @@ class Player:
                         knuck_back_direction = -1
                     enemy.take_damage(10, knuck_back_direction, self.knuck_back_distance, self.knock_back_time)
 
-        if self.current_animation.current_frame == 0:
+        if self.current_animation.current_frame == attack_dash_frame:
             self.x += self.pressed_directions[-1] * self.attack_dash_speed * delta_time
 
         if self.current_animation.finished:
-            self.state = "normal"
-            self.attack_frame_active = False
+            self.state = Player.State.NORMAL
+            self.is_attack_frame_active = False
             self.current_animation = self.idle_animation.reset()
             self.set_facing_direction()
+            self.attack_buffer_timer = self.attack_buffer_time
 
     def hurt(self, delta_time):
         if self.current_animation.finished:
-            self.state = "normal"
+            self.state = Player.State.NORMAL
             self.set_facing_direction()
         if self.is_being_knocked_back:
             self.knocked_back_timer -= delta_time
@@ -351,21 +407,23 @@ class Player:
 
     def take_damage(self, damage, knuck_back_direction, knuck_back_distance, knuck_back_time):
         if not self.is_invincible:
-            self.state = "hurt"
-            self.current_animation = self.hurt_animation.reset()
-            self.health -= damage
-            self.knocked_back_power = (knuck_back_direction * knuck_back_distance) / knuck_back_time
-            self.knocked_back_timer = knuck_back_time
-            self.is_being_knocked_back = True
-            if self.health <= 0:
-                self.health = 0
-                self.state = "dead"
+            if self.state != Player.State.DEAD:
+                self.state = Player.State.HURT
+                self.current_animation = self.hurt_animation.reset()
+                self.health -= damage
+                self.knocked_back_power = (knuck_back_direction * knuck_back_distance) / knuck_back_time
+                self.knocked_back_timer = knuck_back_time
+                self.is_being_knocked_back = True
+                if self.health <= 0:
+                    self.health = 0
+                    self.state = Player.State.DEAD
 
 
 class Enemy:
     def __init__(self, x, y):
         self.idle_animation = Animation("assets/Knight/tile000.png", num_frames=9, frame_length=0.1)
         self.run_animation = Animation("assets/Knight/tile001.png", num_frames=6, frame_length=0.1)
+        
         self.attack_animation = Animation("assets/Knight/tile002.png", num_frames=12, frame_length=0.1, loop=False)
         self.hurt_animation = Animation("assets/Knight/tile003.png", num_frames=5, frame_length=0.05, loop=False)
 
@@ -380,7 +438,7 @@ class Enemy:
 
         self.health = 100
 
-        self.attack_frame_active = False
+        self.is_attack_frame_active = False
 
         self.is_invincible = False
         self.is_being_knocked_back = False
@@ -452,8 +510,8 @@ class Enemy:
             self.facing_right = False
 
     def attack(self, delta_time):
-        if self.current_animation.current_frame == 9 and not self.attack_frame_active:
-            self.attack_frame_active = True
+        if self.current_animation.current_frame == 9 and not self.is_attack_frame_active:
+            self.is_attack_frame_active = True
             if self.facing_right:
                 self.attack_rect.x = self.rect.centerx
             else:
@@ -469,7 +527,7 @@ class Enemy:
 
         if self.current_animation.finished:
             self.state = "normal"
-            self.attack_frame_active = False
+            self.is_attack_frame_active = False
             self.set_facing_direction()
 
             self.current_animation = self.idle_animation.reset()
@@ -498,8 +556,9 @@ class Enemy:
 
 
 class MainScene:
-    def __init__(self, switch_scene):
-        self.switch_scene = switch_scene
+    def __init__(self, game_data):
+        self.game_data = game_data
+
         self.buttons = [
             Button(pygame.Rect(0, 0, 200, 50), pygame.Color(50, 50, 50, 0), text="Play"),
             Button(pygame.Rect(0, 50, 200, 50), pygame.Color(50, 50, 50, 0), text="Settings"),
@@ -512,13 +571,14 @@ class MainScene:
         for button in self.buttons:
             if button.handle_event(event, mouse_position):
                 if button.text == "Play":
-                    self.switch_scene("play")
+                    return PlayScene(self.game_data)
                 elif button.text == "Settings":
-                    self.switch_scene("settings")
+                    return SettingsScene(self.game_data)
                 elif button.text == "Quit":
-                    save_game(game_data)
+                    save_game(self.game_data)
                     pygame.quit()
                     sys.exit()
+        return None
 
     def update(self, delta_time):
         pass
@@ -531,15 +591,15 @@ class MainScene:
 
 
 class PlayScene:
-    def __init__(self, switch_scene, game_data):
-        self.switch_scene = switch_scene
-        self.camera = Camera(LOGICAL_WIDTH, LOGICAL_HEIGHT)
+    def __init__(self, game_data):
+        self.game_data = game_data
+        self.camera = Camera(LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2)
         self.background_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT))
         self.midground_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT), pygame.SRCALPHA)
         self.foreground_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT), pygame.SRCALPHA)
         self.canvas_layer = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT), pygame.SRCALPHA)
         self.back_button = Button(pygame.Rect(10, 10, 100, 50), pygame.Color(200, 200, 0, 0), text="Back")
-        self.player = Player(100, 110, game_data["controls"])
+        self.player = Player(100, 110, self.game_data["controls"])
         self.enemies = [Enemy(200, 110)]
         self.background = pygame.image.load("Layer_0009_2.png").convert_alpha()
         self.background1 = pygame.image.load("Layer_0003_6.png").convert_alpha()
@@ -551,8 +611,9 @@ class PlayScene:
 
     def handle_event(self, event, mouse_position):
         if self.back_button.handle_event(event, mouse_position):
-            self.switch_scene("main")
+            return MainScene(self.game_data)
         self.player.handle_event(event)
+        return None
 
     def update(self, delta_time):
         self.player.update(self.enemies, delta_time)
@@ -579,10 +640,9 @@ class PlayScene:
 
 
 class SettingsScene:
-    def __init__(self, switch_scene, game_data):
-        self.switch_scene = switch_scene
+    def __init__(self, game_data):
         self.game_data = game_data
-        self.controls = game_data["controls"]
+        self.controls = self.game_data["controls"]
         self.back_button = Button(pygame.Rect(10, 10, 100, 50), pygame.Color(200, 200, 0, 0), text="Back")
         self.background = pygame.image.load("settings_scene_bg.png").convert()
         self.selected_action = None
@@ -606,7 +666,8 @@ class SettingsScene:
         if self.back_button.handle_event(event, mouse_position):
             self.game_data["controls"] = self.controls
             save_game(self.game_data)
-            self.switch_scene("main")
+            return MainScene(self.game_data)
+        return None
 
     def update(self, delta_time):
         pass
@@ -623,21 +684,10 @@ if __name__ == "__main__":
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("You must know this: Holding down a key will execute it continuously. You do not need to press the key repeatedly.")
     logical_surface = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT))
-    current_scene = None
     game_data = load_game()
+    current_scene = MainScene(game_data)
     save_game(game_data)
     scale, offset = calculate_letterbox(LOGICAL_WIDTH, LOGICAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT)
-
-    def switch_scene(scene_name):
-        global current_scene
-        if scene_name == "main":
-            current_scene = MainScene(switch_scene)
-        elif scene_name == "play":
-            current_scene = PlayScene(switch_scene, game_data)
-        elif scene_name == "settings":
-            current_scene = SettingsScene(switch_scene, game_data)
-
-    switch_scene("main")
     running = True
     clock = pygame.time.Clock()
 
@@ -654,9 +704,13 @@ if __name__ == "__main__":
             elif event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
                 mouse_x = (event.pos[0] - offset[0]) / scale
                 mouse_y = (event.pos[1] - offset[1]) / scale
-                current_scene.handle_event(event, (mouse_x, mouse_y))
+                next_scene = current_scene.handle_event(event, (mouse_x, mouse_y))
+                if next_scene:
+                    current_scene = next_scene
             elif event.type in (pygame.KEYDOWN, pygame.KEYUP):
-                current_scene.handle_event(event, (-100, -100))
+                next_scene = current_scene.handle_event(event, (-100, -100))
+                if next_scene:
+                    current_scene = next_scene
 
         current_scene.update(delta_time)
         current_scene.draw(logical_surface)
