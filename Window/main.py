@@ -4,6 +4,7 @@ import json
 import os
 from enum import Enum, auto
 from dataclasses import dataclass
+DEBUG = True
 
 MAX_FPS = 900
 MIN_FPS = 0.03
@@ -11,6 +12,7 @@ LOGICAL_WIDTH, LOGICAL_HEIGHT = 400, 300
 SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
 SAVE_FILE = "save_data.json"
 BACKGROUND_COLOR = (0, 0, 0)
+FLOOR_Y = 165
 
 default_data = {
     "controls": {
@@ -177,7 +179,6 @@ class Animation:
         return self
 
 
-DEBUG = True
 @dataclass
 class AttackData:
     animation: Animation 
@@ -212,7 +213,7 @@ class Player:
         self.pressed_directions = [0]
         self.pressed_actions = ["null"]
 
-        self.idle_animation = Animation("assets/player/Fire_Warrior_FireSwordIdle.png", num_frames=8, frame_length=0.1)
+        self.idle_animation = Animation("assets/player/idle.png", num_frames=8, frame_length=0.1)
         self.run_animation = Animation("assets/player/Fire_Warrior_FireSwordRun.png", num_frames=8, frame_length=0.1)
         self.dash_animation = Animation("assets/player/Fire_Warrior_FireSwordDash.png", num_frames=4, frame_length=0.3 / 7, loop=False)
         self.hurt_animation = Animation("assets/player/Fire_Warrior_FireSwordHit.png", num_frames=4, frame_length=0.2 / 4, loop=False)
@@ -221,7 +222,7 @@ class Player:
 
         self.attack_datas = (
             AttackData(
-                animation=Animation("assets/player/Fire_Warrior_FireSwordAttack1.png", num_frames=5, frame_length=0.1, loop=False),
+                animation=Animation("assets/player/attack1.png", num_frames=6, frame_length=0.1, loop=False),
                 active_frame=2,
                 dash_frame=1,
                 dash_distance=20,
@@ -232,8 +233,8 @@ class Player:
                 rect=pygame.Rect(self.rect.centerx, self.rect.top, 45, 50),
             ),
             AttackData(
-                animation=Animation("assets/player/Fire_Warrior_FireSwordAttack2.png", num_frames=4, frame_length=0.1, loop=False),
-                active_frame=1,
+                animation=Animation("assets/player/attack2.png", num_frames=4, frame_length=0.1, loop=False),
+                active_frame=0,
                 dash_frame=0,
                 dash_distance=20,
                 dash_time=0.1,
@@ -243,10 +244,10 @@ class Player:
                 rect=pygame.Rect(self.rect.centerx, self.rect.top, 45, 50),
             ),
             AttackData(
-                animation=Animation("assets/player/Fire_Warrior_FireSwordAttack3.png", num_frames=8, frame_length=0.1, loop=False),
-                active_frame=3,
-                dash_frame=1,
-                dash_distance=10,
+                animation=Animation("assets/player/attack3.png", num_frames=6, frame_length=0.1, loop=False),
+                active_frame=0,
+                dash_frame=0,
+                dash_distance=40,
                 dash_time=0.1,
                 knuck_back_distance=40,
                 knock_back_time=0.1,
@@ -279,8 +280,6 @@ class Player:
         self.dash_cooldown_time = 0.5
         self.dash_cooldown_timer = 0
 
-
-        # Other entities
         self.enemies = []
 
     def handle_event(self, event):
@@ -325,7 +324,8 @@ class Player:
                 self.dash(delta_time)
 
         if self.state == Player.State.NORMAL:
-            self.facing_direction = self.pressed_directions[-1]
+            if self.pressed_directions[-1] != 0:
+                self.facing_direction = self.pressed_directions[-1]
             if self.pressed_actions[-1] == "attack" or self.attack_buffer_timer > 0:            
                 self.state = Player.State.ATTACK
                 self.current_attack = self.attack_datas[self.attack_combo]
@@ -394,7 +394,7 @@ class Player:
             self.current_attack.rect.y = self.rect.y
             for enemy in self.enemies:
                 if self.current_attack.rect.colliderect(enemy.rect):
-                    enemy.take_damage(10, self.facing_direction, current_attack.knuck_back_distance, current_attack.knock_back_time)
+                    enemy.take_damage(current_attack.damage, self.facing_direction, current_attack.knuck_back_distance, current_attack.knock_back_time)
 
         if self.current_animation.current_frame == current_attack.dash_frame:
             self.x += self.pressed_directions[-1] * self.current_attack.dash_speed * delta_time
@@ -418,6 +418,7 @@ class Player:
     def take_damage(self, damage, knuck_back_direction, knuck_back_distance, knuck_back_time):
         if not self.is_invincible:
             if self.state != Player.State.DEAD:
+                self.is_attack_frame_active = False
                 self.state = Player.State.HURT
                 self.current_animation = self.hurt_animation.reset()
                 self.current_health -= damage
@@ -428,43 +429,44 @@ class Player:
                     self.current_health = 0
                     self.state = Player.State.DEAD
 
+
 class Enemy:
     class State(Enum):
         NORMAL = auto()
-        ATTACK = auto()
+        ATTACK = auto() 
         HURT = auto()
         DEAD = auto()
 
     def __init__(self, x, y):
-        self.idle_animation = Animation("assets/Knight/idle.png", num_frames=4, frame_length=0.2)
-        self.run_animation = Animation("assets/Knight/run.png", num_frames=4, frame_length=0.2)
-        self.hurt_animation = Animation("assets/Knight/tile003.png", num_frames=5, frame_length=0.05, loop=False)
+        self.idle_animation = Animation("assets/enemy/idle.png", num_frames=10, frame_length=0.2)
+        self.run_animation = Animation("assets/enemy/run.png", num_frames=4, frame_length=0.2)
+        self.hurt_animation = Animation("assets/enemy/hurt.png", num_frames=2, frame_length=0.1, loop=False)
         self.current_animation = self.idle_animation
 
         self.rect = pygame.Rect(x, y, 24, 50)
         self.x = x
         self.y = y
-        self.speed = 130
+        self.speed = 60
         self.attack_dash_speed = 300
         self.facing_direction = 1
 
         self.attack_datas = (
             AttackData(
-                animation=Animation("assets/Knight/attack.png", num_frames=4, frame_length=1/8, loop=False),
-                active_frame=1,
-                dash_frame=1,
+                animation=Animation("assets/enemy/attack.png", num_frames=7, frame_length=0.1, loop=False),
+                active_frame=3,
+                dash_frame=9,
                 dash_distance=20,
                 dash_time=0.1,
                 knuck_back_distance=20,
                 knock_back_time=0.1,
-                damage=10,
+                damage=1,
                 rect=pygame.Rect(self.rect.centerx, self.rect.y, 40, 50),
             ),
         )
         self.attack_combo = 0
         self.current_attack = self.attack_datas[self.attack_combo]
 
-        self.max_health = 1
+        self.max_health = 10000
         self.current_health = self.max_health
         self.health_bar = pygame.Rect(0, 0, 10, 3)
 
@@ -551,7 +553,7 @@ class Enemy:
             self.current_attack.rect.y = self.rect.y
             if self.player != None:
                 if self.current_attack.rect.colliderect(self.player.rect):
-                    self.player.take_damage(10, self.facing_direction, current_attack.knuck_back_distance, current_attack.knock_back_time)
+                    self.player.take_damage(current_attack.damage, self.facing_direction, current_attack.knuck_back_distance, current_attack.knock_back_time)
         if self.current_animation.current_frame == current_attack.dash_frame:
                 self.x += self.facing_direction * self.current_attack.dash_speed * delta_time
         if self.current_animation.finished:
@@ -571,6 +573,7 @@ class Enemy:
 
     def take_damage(self, damage, knuck_back_direction, knuck_back_distance, knuck_back_time):
         if not self.is_invincible:
+            self.is_attack_frame_active = False
             self.state = Enemy.State.HURT
             self.current_animation = self.hurt_animation.reset()
             self.current_health -= damage
@@ -579,7 +582,6 @@ class Enemy:
             self.is_being_knocked_back = True
             if self.current_health <= 0:
                 self.state = Enemy.State.DEAD
-
 
 
 class MainScene:
@@ -598,7 +600,7 @@ class MainScene:
         for button in self.buttons:
             if button.handle_event_and_check_clicked(event, mouse_position):
                 if button.text == "Play":
-                    return PlayScene(self.game_data)
+                    return MapScene(self.game_data)
                 elif button.text == "Settings":
                     return SettingsScene(self.game_data)
                 elif button.text == "Quit":
@@ -617,8 +619,65 @@ class MainScene:
         logical_surface.blit(self.layer, (0, 0))
 
 
-class PlayScene:
+class MapScene:
     def __init__(self, game_data):
+
+        self.game_data = game_data
+
+        stage1_data = PlaySceneData(
+        background = pygame.image.load("assets/background/background.png").convert_alpha(),
+        midground=pygame.image.load("assets/background/midground.png").convert_alpha(),
+        foreground=pygame.image.load("assets/background/foreground.png").convert_alpha(),
+        player = Player(100, FLOOR_Y, self.game_data["controls"]),
+        enemies = [Enemy(200, FLOOR_Y)],
+        )
+
+        self.stage_datas = (stage1_data, stage1_data, stage1_data, stage1_data)
+
+
+        self.background = pygame.image.load("assets/background/map.png").convert_alpha()
+
+        self.back_button = Button(pygame.Rect(10, 10, 100, 50), pygame.Color(200, 200, 0, 0), text="Back")
+
+        self.stage_buttons = (
+            Button(pygame.Rect(100, 50, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage1",),
+            Button(pygame.Rect(100, 100, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage2",),
+            Button(pygame.Rect(100, 150, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage3",),
+            Button(pygame.Rect(100, 200, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage4",),
+        )
+
+    def handle_event(self, event, mouse_position):
+        for i, button in enumerate(self.stage_buttons):
+            if button.handle_event_and_check_clicked(event, mouse_position):
+                return PlayScene(self.game_data, self.stage_datas[i])
+
+        if self.back_button.handle_event_and_check_clicked(event, mouse_position):
+            return MainScene(self.game_data)
+        
+    def update(self, delta_time):
+        pass
+
+    def draw(self, logical_surface):
+        logical_surface.blit(self.background, (0, 0))
+
+        for button in self.stage_buttons:
+            button.draw(logical_surface)
+        self.back_button.draw(logical_surface)
+
+
+@dataclass
+class PlaySceneData:
+    background: pygame.Surface
+    midground: pygame.Surface
+    foreground: pygame.Surface
+    player: Player     
+    enemies: list[Enemy]
+
+
+
+
+class PlayScene:
+    def __init__(self, game_data, play_scene_data: PlaySceneData):
         self.game_data = game_data
         self.camera = Camera(LOGICAL_WIDTH, LOGICAL_HEIGHT)
         self.background_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT))
@@ -626,15 +685,16 @@ class PlayScene:
         self.foreground_layer = pygame.Surface((LOGICAL_WIDTH * 2, LOGICAL_HEIGHT), pygame.SRCALPHA)
         self.canvas_layer = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT), pygame.SRCALPHA)
         self.back_button = Button(pygame.Rect(10, 10, 100, 50), pygame.Color(200, 200, 0, 0), text="Back")
-        self.player = Player(100, 250, self.game_data["controls"])
-        self.enemies = [Enemy(200, 250)]
-        self.background = pygame.image.load("assets/background/background.png").convert_alpha()
-        self.background1 = pygame.image.load("assets/background/midground.png").convert_alpha()
-        self.background2 = pygame.image.load("assets/background/foreground.png").convert_alpha()
+        self.player = play_scene_data.player
+        self.enemies = play_scene_data.enemies
+        self.background = play_scene_data.background
+        self.background1 = play_scene_data.midground
+        self.background2 = play_scene_data.foreground
+
 
         for x in range(0, LOGICAL_WIDTH * 2, self.background.get_width()):
             self.background_layer.blit(self.background, (x, 0))
-        for x in range(0, LOGICAL_WIDTH * 2, self.background.get_width()):
+        for x in range(0, LOGICAL_WIDTH * 2, self.background1.get_width()):
             self.midground_layer.blit(self.background1, (x, 0))
 
     def handle_event(self, event, mouse_position):
@@ -768,6 +828,6 @@ if __name__ == "__main__":
         current_scene.draw(logical_surface)
         screen.fill(BACKGROUND_COLOR)
         scaled_surface = pygame.transform.scale(logical_surface, (LOGICAL_WIDTH * scale, LOGICAL_HEIGHT * scale))
-        blured_surface = blur_surface(scaled_surface, scale_factor=1)
-        screen.blit(blured_surface, offset)
+      #  blured_surface = blur_surface(scaled_surface, scale_factor=2)
+        screen.blit(scaled_surface, offset)
         pygame.display.flip()

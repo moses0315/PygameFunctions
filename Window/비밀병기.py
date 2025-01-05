@@ -1,80 +1,72 @@
-import pygame
-from pygame.locals import *
+import random
 
-pygame.init()
+class Boss:
+    def __init__(self):
+        self.hp = 100
+        self.phase = 1
+        self.current_pattern = 0
+        self.player_distance = 0  # 플레이어와의 거리
+        self.patterns = {
+            1: [self.slash_attack, self.fireball],
+            2: [self.dash_attack, self.area_attack],
+        }
 
-# 기본 설정
-SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-clock = pygame.time.Clock()
+    def slash_attack(self):
+        print("Boss uses Slash Attack!")
 
-# 색상 정의
-WHITE = (255, 255, 255)
+    def fireball(self):
+        print("Boss casts a Fireball!")
 
-# 플레이어 속성 정의
-player = pygame.Rect(100, 500, 50, 50)
-player_color = (0, 0, 255)
+    def dash_attack(self):
+        print("Boss dashes towards the player!")
 
-# 공격 관련 변수
-attacking = False
-attack_stage = 0
-attack_buffer_time = 20  # 공격 입력 버퍼 유지 프레임 수
-attack_buffer_counter = 0
-combo_reset_time = 30  # 콤보가 끝난 후 초기화까지의 시간
-combo_reset_counter = 0
+    def area_attack(self):
+        print("Boss uses an Area of Effect Attack!")
 
-# 게임 루프
-running = True
-while running:
-    screen.fill(WHITE)
+    def react_to_player(self, player_action):
+        """플레이어 행동에 따라 반응"""
+        if player_action == "jump":
+            print("Boss anticipates and launches an upward strike!")
+        elif player_action == "attack":
+            print("Boss counters the player's attack!")
+        elif player_action == "distance":
+            self.ranged_attack()
 
-    # 이벤트 처리
-    for event in pygame.event.get():
-        if event.type == QUIT:
-            running = False
+    def ranged_attack(self):
+        print("Boss fires a projectile!")
 
-    # 키 입력 처리
-    keys = pygame.key.get_pressed()
-    if keys[K_z]:
-        attack_buffer_counter = attack_buffer_time  # 공격 키가 눌리면 버퍼 카운터 초기화
+    def next_action(self, player_action):
+        """다음 행동 결정"""
+        # 1. 상황 반응: 플레이어 행동에 반응
+        self.react_to_player(player_action)
 
-    # 공격 콤보 입력 처리
-    if attack_buffer_counter > 0:
-        attack_buffer_counter -= 1
+        # 2. 패턴에 따른 행동
+        actions = self.patterns[self.phase]
+        action = actions[self.current_pattern]
+        action()
+        self.current_pattern = (self.current_pattern + 1) % len(actions)
 
-    if not attacking and attack_buffer_counter > 0:
-        # 공격이 가능한 상태이면 콤보 스테이지에 따라 공격 시작
-        attacking = True
-        attack_stage = (attack_stage + 1) % 3  # 콤보는 3단계로 반복됨
-        attack_buffer_counter = 0
-        combo_reset_counter = combo_reset_time
+        # 3. 랜덤성 추가
+        if random.random() < 0.3:  # 30% 확률로 특별 행동
+            self.special_attack()
 
-    # 공격 애니메이션 상태 처리
-    if attacking:
-        if attack_stage == 0:
-            player_color = (255, 0, 0)  # 공격1 - 빨간색
-        elif attack_stage == 1:
-            player_color = (0, 255, 0)  # 공격2 - 초록색
-        elif attack_stage == 2:
-            player_color = (0, 0, 255)  # 공격3 - 파란색 (더 강한 공격)
+    def special_attack(self):
+        print("Boss unleashes a devastating special attack!")
 
-        # 여기에서는 단순히 일정 시간 후 공격이 끝난다고 가정
-        combo_reset_counter -= 1
-        if combo_reset_counter <= 0:
-            attacking = False
-            player_color = (0, 0, 0)  # 공격이 끝나면 색상 리셋
+    def update_phase(self):
+        """페이즈 업데이트"""
+        if self.hp <= 50 and self.phase == 1:
+            self.phase = 2
+            self.current_pattern = 0
+            print("Boss enters Phase 2!")
 
-    # 공격이 끝나고 콤보 초기화 시간 경과 시 콤보 리셋
-    if not attacking and combo_reset_counter > 0:
-        combo_reset_counter -= 1
-    if combo_reset_counter <= 0 and attack_stage > 0:
-        attack_stage = 0
-
-    # 플레이어 그리기
-    pygame.draw.rect(screen, player_color, player)
-
-    # 화면 업데이트
-    pygame.display.flip()
-    clock.tick(60)
-
-pygame.quit()
+# 테스트 루프
+boss = Boss()
+player_actions = ["jump", "attack", "distance"]  # 플레이어 행동
+while boss.hp > 0:
+    player_action = random.choice(player_actions)
+    print(f"Player action: {player_action}")
+    boss.next_action(player_action)
+    boss.hp -= 10  # 테스트를 위해 체력 감소
+    boss.update_phase()
+    print(f"Boss HP: {boss.hp}")
