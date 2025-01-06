@@ -4,6 +4,10 @@ import json
 import os
 from enum import Enum, auto
 from dataclasses import dataclass
+import ctypes
+ctypes.windll.user32.SetProcessDPIAware()
+
+
 DEBUG = True
 
 MAX_FPS = 900
@@ -33,11 +37,11 @@ default_data = {
 }
 
 
-
 def save_game(data, file_path=SAVE_FILE):
     with open(file_path, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
     print("Game data saved!")
+
 
 def load_game(file_path=SAVE_FILE):
     if not os.path.exists(file_path):
@@ -48,6 +52,7 @@ def load_game(file_path=SAVE_FILE):
             data = json.load(file)
         print("Game data loaded!")
         return data
+
 
 
 class Button:
@@ -181,9 +186,9 @@ class Animation:
 
 @dataclass
 class AttackData:
-    animation: Animation 
-    active_frame: int     
-    dash_frame: int       
+    animation: Animation
+    active_frame: int
+    dash_frame: int
     dash_distance: int
     dash_time: float
     knuck_back_distance: int
@@ -319,21 +324,21 @@ class Player:
             case Player.State.ATTACK:
                 self.enemies = enemies
                 self.attack(self.current_attack, delta_time)
-                
+
             case Player.State.DASH:
                 self.dash(delta_time)
 
         if self.state == Player.State.NORMAL:
             if self.pressed_directions[-1] != 0:
                 self.facing_direction = self.pressed_directions[-1]
-            if self.pressed_actions[-1] == "attack" or self.attack_buffer_timer > 0:            
+            if self.pressed_actions[-1] == "attack" or self.attack_buffer_timer > 0:
                 self.state = Player.State.ATTACK
                 self.current_attack = self.attack_datas[self.attack_combo]
                 self.current_animation = self.current_attack.animation.reset()
                 self.attack_combo += 1
                 if self.attack_combo >= len(self.attack_datas):
                     self.attack_combo = 0
-            elif self.pressed_actions[-1] == "dash" and self.dash_cooldown_timer <= 0:           
+            elif self.pressed_actions[-1] == "dash" and self.dash_cooldown_timer <= 0:
                 self.state = Player.State.DASH
                 self.dash_cooldown_timer = self.dash_cooldown_time
                 self.is_invincible = True
@@ -371,7 +376,7 @@ class Player:
 
             pygame.draw.rect(surface, "white", self.rect, 1)
 
-        self.current_animation.draw(surface, self.rect, True if self.facing_direction==-1 else False)
+        self.current_animation.draw(surface, self.rect, True if self.facing_direction == -1 else False)
 
         health_ratio = self.current_health / self.max_health
         pygame.draw.rect(surface, "black", self.health_bar)
@@ -433,7 +438,7 @@ class Player:
 class Enemy:
     class State(Enum):
         NORMAL = auto()
-        ATTACK = auto() 
+        ATTACK = auto()
         HURT = auto()
         DEAD = auto()
 
@@ -538,7 +543,7 @@ class Enemy:
 
             pygame.draw.rect(surface, "red", self.rect, 1)
 
-        self.current_animation.draw(surface, self.rect, True if self.facing_direction==-1 else False)
+        self.current_animation.draw(surface, self.rect, True if self.facing_direction == -1 else False)
         health_ratio = self.current_health / self.max_health
         pygame.draw.rect(surface, "black", self.health_bar)
         pygame.draw.rect(surface, "green", (*self.health_bar.topleft, self.health_bar.w * health_ratio, self.health_bar.h))
@@ -555,7 +560,7 @@ class Enemy:
                 if self.current_attack.rect.colliderect(self.player.rect):
                     self.player.take_damage(current_attack.damage, self.facing_direction, current_attack.knuck_back_distance, current_attack.knock_back_time)
         if self.current_animation.current_frame == current_attack.dash_frame:
-                self.x += self.facing_direction * self.current_attack.dash_speed * delta_time
+            self.x += self.facing_direction * self.current_attack.dash_speed * delta_time
         if self.current_animation.finished:
             self.state = Enemy.State.NORMAL
             self.is_attack_frame_active = False
@@ -589,9 +594,21 @@ class MainScene:
         self.game_data = game_data
 
         self.buttons = [
-            Button(pygame.Rect(0, 0, 200, 50), pygame.Color(50, 50, 50, 0), text="Play",),
-            Button(pygame.Rect(0, 50, 200, 50), pygame.Color(50, 50, 50, 0), text="Settings",),
-            Button(pygame.Rect(0, 100, 200, 50), pygame.Color(200, 0, 0, 0), text="Quit",),
+            Button(
+                pygame.Rect(0, 0, 200, 50),
+                pygame.Color(50, 50, 50, 0),
+                text="Play",
+            ),
+            Button(
+                pygame.Rect(0, 50, 200, 50),
+                pygame.Color(50, 50, 50, 0),
+                text="Settings",
+            ),
+            Button(
+                pygame.Rect(0, 100, 200, 50),
+                pygame.Color(200, 0, 0, 0),
+                text="Quit",
+            ),
         ]
         self.background = pygame.image.load("main_scene_bg.png").convert()
         self.layer = pygame.Surface((LOGICAL_WIDTH, LOGICAL_HEIGHT))
@@ -619,31 +636,76 @@ class MainScene:
         logical_surface.blit(self.layer, (0, 0))
 
 
+@dataclass
+class PlaySceneData:
+    background: pygame.Surface
+    midground: pygame.Surface
+    foreground: pygame.Surface
+    player: Player
+    enemies: list[Enemy]
+
+
 class MapScene:
     def __init__(self, game_data):
 
         self.game_data = game_data
 
         stage1_data = PlaySceneData(
-        background = pygame.image.load("assets/background/background.png").convert_alpha(),
-        midground=pygame.image.load("assets/background/midground.png").convert_alpha(),
-        foreground=pygame.image.load("assets/background/foreground.png").convert_alpha(),
-        player = Player(100, FLOOR_Y, self.game_data["controls"]),
-        enemies = [Enemy(200, FLOOR_Y)],
+            background=pygame.image.load("assets/background/background.png").convert_alpha(),
+            midground=pygame.image.load("assets/background/midground.png").convert_alpha(),
+            foreground=pygame.image.load("assets/background/foreground.png").convert_alpha(),
+            player=Player(100, FLOOR_Y, self.game_data["controls"]),
+            enemies=[Enemy(200, FLOOR_Y)],
+        )
+        stage2_data = PlaySceneData(
+            background=pygame.image.load("assets/background/background.png").convert_alpha(),
+            midground=pygame.image.load("assets/background/midground.png").convert_alpha(),
+            foreground=pygame.image.load("assets/background/foreground.png").convert_alpha(),
+            player=Player(100, FLOOR_Y, self.game_data["controls"]),
+            enemies=[Enemy(400, FLOOR_Y)],
+        )
+        stage3_data = PlaySceneData(
+            background=pygame.image.load("assets/background/background.png").convert_alpha(),
+            midground=pygame.image.load("assets/background/midground.png").convert_alpha(),
+            foreground=pygame.image.load("assets/background/foreground.png").convert_alpha(),
+            player=Player(100, FLOOR_Y, self.game_data["controls"]),
+            enemies=[Enemy(400, FLOOR_Y),Enemy(200, FLOOR_Y)],
+        )
+        stage4_data = PlaySceneData(
+            background=pygame.image.load("assets/background/background.png").convert_alpha(),
+            midground=pygame.image.load("assets/background/midground.png").convert_alpha(),
+            foreground=pygame.image.load("assets/background/foreground.png").convert_alpha(),
+            player=Player(100, FLOOR_Y, self.game_data["controls"]),
+            enemies=[Enemy(0, FLOOR_Y)],
         )
 
-        self.stage_datas = (stage1_data, stage1_data, stage1_data, stage1_data)
-
+        self.stage_datas = (stage1_data, stage2_data, stage3_data, stage4_data)
 
         self.background = pygame.image.load("assets/background/map.png").convert_alpha()
 
         self.back_button = Button(pygame.Rect(10, 10, 100, 50), pygame.Color(200, 200, 0, 0), text="Back")
 
         self.stage_buttons = (
-            Button(pygame.Rect(100, 50, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage1",),
-            Button(pygame.Rect(100, 100, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage2",),
-            Button(pygame.Rect(100, 150, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage3",),
-            Button(pygame.Rect(100, 200, 200, 50), pygame.Color(100, 100, 200, 0), text="Stage4",),
+            Button(
+                pygame.Rect(100, 50, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text="Stage1",
+            ),
+            Button(
+                pygame.Rect(100, 100, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text="Stage2",
+            ),
+            Button(
+                pygame.Rect(100, 150, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text="Stage3",
+            ),
+            Button(
+                pygame.Rect(100, 200, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text="Stage4",
+            ),
         )
 
     def handle_event(self, event, mouse_position):
@@ -653,7 +715,7 @@ class MapScene:
 
         if self.back_button.handle_event_and_check_clicked(event, mouse_position):
             return MainScene(self.game_data)
-        
+
     def update(self, delta_time):
         pass
 
@@ -663,17 +725,6 @@ class MapScene:
         for button in self.stage_buttons:
             button.draw(logical_surface)
         self.back_button.draw(logical_surface)
-
-
-@dataclass
-class PlaySceneData:
-    background: pygame.Surface
-    midground: pygame.Surface
-    foreground: pygame.Surface
-    player: Player     
-    enemies: list[Enemy]
-
-
 
 
 class PlayScene:
@@ -691,7 +742,6 @@ class PlayScene:
         self.background1 = play_scene_data.midground
         self.background2 = play_scene_data.foreground
 
-
         for x in range(0, LOGICAL_WIDTH * 2, self.background.get_width()):
             self.background_layer.blit(self.background, (x, 0))
         for x in range(0, LOGICAL_WIDTH * 2, self.background1.get_width()):
@@ -699,7 +749,7 @@ class PlayScene:
 
     def handle_event(self, event, mouse_position):
         if self.back_button.handle_event_and_check_clicked(event, mouse_position):
-            return MainScene(self.game_data)
+            return MapScene(self.game_data)
         self.player.handle_event(event)
         return None
 
@@ -735,10 +785,26 @@ class SettingsScene:
         self.background = pygame.image.load("settings_scene_bg.png").convert()
         self.selected_action = None
         self.action_buttons = {
-            "move_left": Button(pygame.Rect(100, 50, 200, 50), pygame.Color(100, 100, 200, 0), text=f"move_left: {pygame.key.name(self.controls['move_left'])}",),
-            "move_right": Button(pygame.Rect(100, 100, 200, 50), pygame.Color(100, 100, 200, 0), text=f"move_right: {pygame.key.name(self.controls['move_right'])}",),
-            "attack": Button(pygame.Rect(100, 150, 200, 50), pygame.Color(100, 100, 200, 0), text=f"attack: {pygame.key.name(self.controls['attack'])}",),
-            "dash": Button(pygame.Rect(100, 200, 200, 50), pygame.Color(100, 100, 200, 0), text=f"dash: {pygame.key.name(self.controls['dash'])}",),
+            "move_left": Button(
+                pygame.Rect(100, 50, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text=f"move_left: {pygame.key.name(self.controls['move_left'])}",
+            ),
+            "move_right": Button(
+                pygame.Rect(100, 100, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text=f"move_right: {pygame.key.name(self.controls['move_right'])}",
+            ),
+            "attack": Button(
+                pygame.Rect(100, 150, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text=f"attack: {pygame.key.name(self.controls['attack'])}",
+            ),
+            "dash": Button(
+                pygame.Rect(100, 200, 200, 50),
+                pygame.Color(100, 100, 200, 0),
+                text=f"dash: {pygame.key.name(self.controls['dash'])}",
+            ),
         }
 
     def handle_event(self, event, mouse_position):
@@ -767,8 +833,8 @@ class SettingsScene:
         self.back_button.draw(logical_surface)
 
 
-
 if __name__ == "__main__":
+
     def calculate_scale_and_letterbox(logical_width, logical_height, screen_width, screen_height):
         logical_aspect = logical_width / logical_height
         screen_aspect = screen_width / screen_height
@@ -789,6 +855,12 @@ if __name__ == "__main__":
         small_surface = pygame.transform.smoothscale(surface, small_size)
         return pygame.transform.smoothscale(small_surface, surface.get_size())
     
+    def draw_scanlines(surface):
+        for y in range(0, surface.get_height(), 2):
+            pygame.draw.line(surface, (0, 0, 0, 50), (0, y), (surface.get_width(), y))
+        for x in range(0, surface.get_width(), 2):
+            pygame.draw.line(surface, (0, 0, 0, 50), (x, 0), (x, surface.get_height()))
+
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("You must know this: Holding down a key will execute it continuously. You do not need to press the key repeatedly.")
@@ -827,7 +899,7 @@ if __name__ == "__main__":
         current_scene.update(delta_time)
         current_scene.draw(logical_surface)
         screen.fill(BACKGROUND_COLOR)
-        scaled_surface = pygame.transform.scale(logical_surface, (LOGICAL_WIDTH * scale, LOGICAL_HEIGHT * scale))
-      #  blured_surface = blur_surface(scaled_surface, scale_factor=2)
+        blured_surface = blur_surface(logical_surface, scale_factor=1)
+        scaled_surface = pygame.transform.scale(blured_surface, (LOGICAL_WIDTH * scale, LOGICAL_HEIGHT * scale))
         screen.blit(scaled_surface, offset)
         pygame.display.flip()
