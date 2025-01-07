@@ -122,11 +122,65 @@ class Camera:
         self.x = 0
         self.y = 0
 
-    def update(self, target_rect, map_width, map_height):
-        self.x = target_rect.centerx - self.width // 2
-        self.y = target_rect.centery - self.height // 2
+        # 흔들림 관련 속성
+        self.offset_x = 0
+        self.offset_y = 0
+        self.shake_magnitude = 0
+        self.shake_duration = 0
+        self.shake_frequency = 0.1
+        self.accumulated_time = 0
+
+        # 흔들림 방향
+        self.shake_axis = None  # 'x' 또는 'y'
+        self.shake_direction = 1  # +1 또는 -1
+
+    def update(self, target_rect, map_width, map_height, delta_time):
+        if self.shake_duration > 0:
+            self.shake_duration -= delta_time
+            self.accumulated_time += delta_time
+            while self.accumulated_time >= self.shake_frequency:
+                self.accumulated_time -= self.shake_frequency
+                if self.shake_axis == 'x':
+                    self.offset_x = self.shake_direction * self.shake_magnitude
+                    self.shake_direction *= -1
+                    self.offset_y = 0
+                elif self.shake_axis == 'y':
+                    self.offset_y = self.shake_direction * self.shake_magnitude
+                    self.shake_direction *= -1
+                    self.offset_x = 0
+
+            # 흔들림이 종료되면 초기화
+            if self.shake_duration <= 0:
+                self.offset_x = 0
+                self.offset_y = 0
+                self.shake_magnitude = 0
+                self.shake_duration = 0
+                self.accumulated_time = 0
+
+        # 카메라 기본 위치 계산 (오프셋 포함)
+        self.x = (target_rect.centerx - self.width // 2) + self.offset_x
+        self.y = (target_rect.centery - self.height // 2) + self.offset_y
+
+        # 맵 경계 내로 제한
         self.x = max(0, min(self.x, map_width - self.width))
         self.y = max(0, min(self.y, map_height - self.height))
+
+    def shake(self, magnitude, duration, axis='x', frequency=0.05):
+        """
+        magnitude: 흔들림 강도
+        duration: 흔들림 지속 시간
+        axis: 흔들림 축 ('x' 또는 'y')
+        frequency: 흔들림 빈도
+        """
+        self.shake_magnitude = magnitude
+        self.shake_duration = duration
+        self.shake_frequency = frequency
+        self.shake_axis = axis
+        self.shake_direction = 1  # 초기 방향 설정
+        self.accumulated_time = 0
+
+
+
 
 
 class Animation:
@@ -447,7 +501,7 @@ class Enemy:
         self.run_animation = Animation("assets/enemy/run.png", num_frames=4, frame_length=0.2)
         self.hurt_animation = Animation("assets/enemy/hurt.png", num_frames=2, frame_length=0.1, loop=False)
         self.current_animation = self.idle_animation
-
+        
         self.rect = pygame.Rect(x, y, 24, 50)
         self.x = x
         self.y = y
@@ -459,7 +513,7 @@ class Enemy:
             AttackData(
                 animation=Animation("assets/enemy/attack.png", num_frames=7, frame_length=0.1, loop=False),
                 active_frame=3,
-                dash_frame=9,
+                dash_frame=2,
                 dash_distance=20,
                 dash_time=0.1,
                 knuck_back_distance=20,
@@ -748,6 +802,10 @@ class PlayScene:
             self.midground_layer.blit(self.background1, (x, 0))
 
     def handle_event(self, event, mouse_position):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                self.camera.shake(3, 0.1)
+
         if self.back_button.handle_event_and_check_clicked(event, mouse_position):
             return MapScene(self.game_data)
         self.player.handle_event(event)
@@ -759,7 +817,7 @@ class PlayScene:
             enemy.update(self.player, delta_time)
             if enemy.state == Enemy.State.DEAD:
                 self.enemies.remove(enemy)
-        self.camera.update(self.player.rect, LOGICAL_WIDTH * 2, LOGICAL_HEIGHT)
+        self.camera.update(self.player.rect, LOGICAL_WIDTH * 2, LOGICAL_HEIGHT, delta_time)
 
     def draw(self, logical_surface):
         self.foreground_layer.fill((0, 0, 0, 0))
@@ -888,10 +946,15 @@ if __name__ == "__main__":
                 if next_scene:
                     current_scene = next_scene
             elif event.type in (pygame.KEYDOWN, pygame.KEYUP):
-                if event.key == pygame.K_SPACE:
-                    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-                    SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_width(), screen.get_height()
-                    scale, offset = calculate_scale_and_letterbox(LOGICAL_WIDTH, LOGICAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT)
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_0:
+                        screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+                        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_width(), screen.get_height()
+                        scale, offset = calculate_scale_and_letterbox(LOGICAL_WIDTH, LOGICAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT)
+                    elif event.key == pygame.K_ESCAPE:
+                        screen = pygame.display.set_mode((LOGICAL_WIDTH, LOGICAL_HEIGHT), pygame.RESIZABLE)
+                        SCREEN_WIDTH, SCREEN_HEIGHT = screen.get_width(), screen.get_height()
+                        scale, offset = calculate_scale_and_letterbox(LOGICAL_WIDTH, LOGICAL_HEIGHT, SCREEN_WIDTH, SCREEN_HEIGHT)
                 next_scene = current_scene.handle_event(event, (-100, -100))
                 if next_scene:
                     current_scene = next_scene
